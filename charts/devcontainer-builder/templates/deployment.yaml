@@ -1,0 +1,61 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "devcontainer-builder.fullname" . }}
+  labels:
+    {{- include "devcontainer-builder.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "devcontainer-builder.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "devcontainer-builder.labels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "devcontainer-builder.fullname" . }}
+      containers:
+        - name: devcontainer-builder
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: PORT
+              value: "8080"
+            - name: BUILDKIT_ENDPOINT
+              value: {{ .Values.buildkit.endpoint | quote }}
+            - name: DOCKER_CONFIG
+              value: /home/builder/.docker
+          volumeMounts:
+            - name: registry-auth
+              mountPath: /home/builder/.docker
+              readOnly: true
+            - name: scratch
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: registry-auth
+          secret:
+            secretName: {{ include "devcontainer-builder.secretName" . }}
+            items:
+              - key: .dockerconfigjson
+                path: config.json
+        - name: scratch
+          emptyDir:
+            sizeLimit: {{ .Values.scratchVolume.sizeLimit }}

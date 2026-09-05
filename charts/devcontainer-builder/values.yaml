@@ -1,0 +1,31 @@
+replicaCount: 1
+
+image:
+  repository: ghcr.io/example/devcontainer-builder
+  tag: "0.1.0"
+  pullPolicy: IfNotPresent
+
+service:
+  port: 8080
+
+buildkit:
+  # e.g. tcp://buildkit-buildkit-service.buildkit.svc.cluster.local:1234
+  endpoint: ""
+
+registryAuth:
+  # Provide either an existing Secret (must contain a `.dockerconfigjson` key,
+  # same shape as a kubernetes.io/dockerconfigjson Secret) or an inline
+  # docker config JSON string below.
+  existingSecret: ""
+  dockerConfigJson: ""
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+scratchVolume:
+  sizeLimit: 5Gi

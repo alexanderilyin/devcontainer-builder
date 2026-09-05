@@ -1,0 +1,6 @@
+apiVersion: v2
+name: devcontainer-builder
+description: Deploys the devcontainer-builder service, which builds a container image from a repository's devcontainer.json using a remote BuildKit builder and pushes it to a registry.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

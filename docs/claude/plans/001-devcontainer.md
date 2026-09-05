@@ -1,3 +1,8 @@
+---
+title: Add .devcontainer.json + manual-mode bootstrap scripts
+created: 2026-09-05
+---
+
 # Add .devcontainer.json + manual-mode bootstrap scripts
 
 ## Context

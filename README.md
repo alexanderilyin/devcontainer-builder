@@ -26,6 +26,15 @@ out to Kubernetes to provision a PersistentVolumeClaim before the pod.
   Terraform module that calls an already-running instance of the service and
   exposes the built image as an output, for use from a Workspace Template.
 
+## Documentation
+
+- [`docs/claude/plans/`](docs/claude/plans) - implementation plans written
+  before a change lands, numbered in the order they were authored.
+  - [001-devcontainer](docs/claude/plans/001-devcontainer.md) - adds
+    `.devcontainer.json` and manual-mode bootstrap scripts so this repo can be
+    developed from a Dev Container (or a plain pod, until Dev Containers are
+    wired up in this Coder/K8s setup).
+
 ## Status
 
 Early scaffold. Not yet wired into any real infrastructure or published as a

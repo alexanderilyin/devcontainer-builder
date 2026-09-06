@@ -3,24 +3,18 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   I want the service to resolve the right credential and clone protocol for a repository
   So that callers don't need to know or care whether a host is configured for HTTPS or SSH
 
-  Runs against real fixtures throughout (see features/support/build_fixtures.js
-  and features/support/ssh_fixture.js). Two deliberate limits on what's
-  provable here, both real infrastructure constraints, not gaps in the
-  service's own logic:
-  - build.ts always rewrites an HTTPS-resolved clone to a literal
-    "https://" URL, and this test setup has no real TLS anywhere, so
-    HTTPS-credentialed scenarios can never reach a real 200. The git-server
-    fixture's git-http container also listens on 443 with a plain
-    (non-TLS) HTTP server specifically so an HTTPS attempt against it fails
-    fast and distinctively ("GnuTLS, handshake failed") instead of hanging
-    (a closed port is silently dropped on this cluster's network) -
-    reaching that specific error is itself proof the rewrite correctly
-    targeted this host, on this port, over this protocol.
-  - "Credential resolution is correctly scoped per host" is provable as
-    "requests to different hosts produce different, host-specific
-    failures" (not accidentally cross-wired) - the netrc/SSH key *content*
-    actually used per request is an internal detail with no external
-    signal once the process exits.
+  Runs against real fixtures throughout (see features/support/build_fixtures.js).
+  test-git-server genuinely serves all four protocols - git://, http://,
+  https:// (real TLS via a self-signed CA generated per test run), and
+  ssh:// (a real authorized key, via a `command=` forced wrapper) - so most
+  scenarios below prove an actual, working clone rather than inferring
+  success from a specific failure signature. One deliberate limit remains,
+  a real infrastructure constraint rather than a gap in the service's own
+  logic: "credential resolution is correctly scoped per host" is provable
+  as "requests to different hosts produce different, correct outcomes" (not
+  accidentally cross-wired) - the netrc/SSH key *content* actually used per
+  request is an internal detail with no other external signal once the
+  process exits.
 
   Background:
     Given the service is running
@@ -38,11 +32,11 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     And the response body should contain "<expect>"
 
     Examples:
-      | repository                                            | status | expect               |
-      | (git fixture git)/example/example-devcontainer.git    | 200    | example-devcontainer |
-      | (git fixture http)/example/example-devcontainer.git   | 200    | example-devcontainer |
-      | git@127.0.0.1:example/example-devcontainer.git        | 500    | git clone            |
-      | ssh://git@127.0.0.1/example/example-devcontainer.git  | 500    | git clone            |
+      | repository                                                    | status | expect               |
+      | (git fixture git)/example/example-devcontainer.git            | 200    | example-devcontainer |
+      | (git fixture http)/example/example-devcontainer.git           | 200    | example-devcontainer |
+      | git@(git fixture host):example/example-devcontainer.git       | 500    | git clone            |
+      | (git fixture ssh)/example/example-devcontainer.git            | 500    | git clone            |
 
   @negative @client-request
   Scenario: An unparseable repository URL is rejected
@@ -68,8 +62,8 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
         "image": { "registry": "(test registry)" }
       }
       """
-    Then the response status should be 500
-    And the service logs should contain "GnuTLS, handshake failed"
+    Then the response status should be 200
+    And the response body should contain "example-devcontainer"
 
   @server-config
   Scenario: A server-configured HTTPS credential is used when the request supplies none
@@ -80,31 +74,30 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
       """
-    Then the response status should be 500
-    And the service logs should contain "GnuTLS, handshake failed"
+    Then the response status should be 200
+    And the response body should contain "example-devcontainer"
 
   @server-config
   Scenario: A server-configured SSH credential rewrites an HTTPS request URL to SSH
     Given the server's git credentials are:
-      | host          | kind | privateKey            | pinnedHostKey |
-      | (ssh fixture) | ssh  | (a valid private key) | (unset)       |
+      | host          | kind | privateKey                  | pinnedHostKey |
+      | (ssh fixture) | ssh  | (an authorized private key) | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
     When I send a POST request to "/build" with body:
       """
       { "repository": "https://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
       """
-    Then the response status should be 500
-    And the response body should contain "git clone"
-    And the service logs should not contain "Host key verification failed"
+    Then the response status should be 200
+    And the response body should contain "example-devcontainer"
 
   @server-config @client-request
   Scenario: Request-level gitCredentials win over a server-configured SSH default for the same host
     # If this regressed (server SSH wrongly won), the clone would instead
-    # try ssh://(git fixture host)/... - port 22 is closed there, and a
-    # closed port hangs on this cluster's network rather than failing
-    # cleanly, so a regression here shows up as a step timeout rather than
-    # a clean assertion mismatch. Still a real, working regression signal.
+    # try ssh://(git fixture host)/... using the deliberately unauthorized
+    # key below - a real, fast, clean "Permission denied" failure (not a
+    # hang or timeout, since the SSH fixture genuinely listens and
+    # responds), cleanly distinguishable from the 200 expected here.
     Given the server's git credentials are:
       | host               | kind | privateKey            | pinnedHostKey |
       | (git fixture host) | ssh  | (a valid private key) | (unset)       |
@@ -116,27 +109,30 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
         "image": { "registry": "(test registry)" }
       }
       """
-    Then the response status should be 500
-    And the service logs should contain "GnuTLS, handshake failed"
+    Then the response status should be 200
+    And the response body should contain "example-devcontainer"
 
   @server-config
   Scenario: Each host uses only its own server-configured credential
+    # git.invalid is a reserved TLD (RFC 2606) guaranteed to never resolve -
+    # a genuinely wrong host that fails fast and cleanly on DNS lookup
+    # alone, with no dependency on any second real server.
     Given the server's git credentials are:
       | host               | kind  | username  | token         |
       | (git fixture host) | https | svc-bot   | ghp_example   |
-      | 127.0.0.1          | https | other-bot | glpat_example |
+      | git.invalid        | https | other-bot | glpat_example |
     When I send a POST request to "/build" with body:
       """
       { "repository": "git@(git fixture host):example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
       """
-    Then the response status should be 500
-    And the service logs should contain "GnuTLS, handshake failed"
+    Then the response status should be 200
+    And the response body should contain "example-devcontainer"
     When I send a POST request to "/build" with body:
       """
-      { "repository": "git@127.0.0.1:example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "git@git.invalid:example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
       """
     Then the response status should be 500
-    And the service logs should contain "Failed to connect to 127.0.0.1 port 443"
+    And the service logs should contain "Could not resolve host: git.invalid"
 
   @server-config
   Scenario: A host with no matching server credential falls back to a verbatim, unauthenticated clone
@@ -192,6 +188,64 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       """
     Then the response status should be 400
     And the response body should contain "no pinned key configured for host"
+
+  @server-config
+  Scenario: Pinned host key policy succeeds end to end with a correct pin and an authorized key
+    # The other pinned scenarios above only prove the policy *branches*
+    # correctly (skips the scan, fails closed with no pin) - none of them
+    # ever reach a real success, so "pinned" reaching an actual working
+    # clone was unverified. The unauthorized key used elsewhere is
+    # deliberate there (isolates host-key behavior from auth); this one
+    # swaps in the real authorized key specifically to prove "pinned" can
+    # carry a request all the way through, not just fail predictably.
+    Given the server's git credentials are:
+      | host          | kind | privateKey                  | pinnedHostKey          |
+      | (ssh fixture) | ssh  | (an authorized private key) | (ssh fixture host key) |
+    And the devcontainer-builder service is configured with:
+      | SSH_HOST_KEY_POLICY | pinned |
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      """
+    Then the response status should be 200
+    And the response body should contain "example-devcontainer"
+
+  @negative @server-config
+  Scenario: Pinned host key policy rejects a stale or incorrect pin
+    # "(wrong ssh fixture host key)" is a real, syntactically valid
+    # known_hosts line for this host - just from an unrelated keypair - so
+    # this is a genuine host-key mismatch (the actual security case
+    # "pinned" exists for), not a parse error standing in for one.
+    Given the server's git credentials are:
+      | host          | kind | privateKey                  | pinnedHostKey                |
+      | (ssh fixture) | ssh  | (an authorized private key) | (wrong ssh fixture host key) |
+    And the devcontainer-builder service is configured with:
+      | SSH_HOST_KEY_POLICY | pinned |
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      """
+    Then the response status should be 500
+    And the response body should contain "git clone"
+    And the service logs should contain "Host key verification failed"
+
+  @negative @server-config
+  Scenario: A malformed SSH private key fails clearly at clone time, not at config load
+    # config.ts's validation only checks privateKey is a non-empty string -
+    # garbage content passes startup and is only ever exercised for real
+    # once a request actually tries to use it.
+    Given the server's git credentials are:
+      | host          | kind | privateKey                             | pinnedHostKey |
+      | (ssh fixture) | ssh  | this is not a real private key at all  | (unset)       |
+    And the devcontainer-builder service is configured with:
+      | SSH_HOST_KEY_POLICY | tofu |
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      """
+    Then the response status should be 500
+    And the response body should contain "git clone"
+    And the service logs should contain "error in libcrypto"
 
   @negative
   Scenario Outline: A failed clone surfaces as a 500 regardless of the credential path used

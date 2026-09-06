@@ -4,7 +4,7 @@ import path from "node:path";
 import { startServer } from "../support/service_process.js";
 import { ensureServerStarted } from "../support/ensure_server.js";
 import { writeTempFile, writeTempJson } from "../support/tmpfiles.js";
-import { getTestPrivateKey } from "../support/ssh_fixture.js";
+import { getTestPrivateKey, getGitFixtureAuthorizedKeyPair } from "../support/build_fixtures.js";
 import { resolveFixtureSentinels, resolveDynamicSentinels } from "../support/fixture_sentinels.js";
 
 function trackTempFile(world, filePath) {
@@ -84,8 +84,10 @@ Given("a file at {string} containing:", async function (symbolicPath, content) {
 // syntactically-valid ephemeral key generated for this test run - a
 // fixture with no matching authorized key rejects it at the auth step, not
 // host-key-verification (that distinction is what several scenarios check).
-// "pinnedHostKey" goes through the dynamic sentinels too, so
-// "(ssh fixture host key)" resolves to the fixture's *real* current host
+// "(an authorized private key)" substitutes the fixture's real authorized
+// key, for scenarios proving a genuinely successful clone/push, not just
+// policy branching. "pinnedHostKey" goes through the dynamic sentinels too,
+// so "(ssh fixture host key)" resolves to the fixture's *real* current host
 // key - a fake/placeholder pin would fail host-key verification for the
 // wrong reason (a real mismatch) instead of proving "pinned" policy works.
 Given("the server's git credentials are:", async function (dataTable) {
@@ -95,8 +97,12 @@ Given("the server's git credentials are:", async function (dataTable) {
     const entry = { host: resolveFixtureSentinels(row.host), kind: row.kind };
     if (row.username) entry.username = row.username;
     if (row.token) entry.token = row.token;
-    if (row.privateKey) {
-      entry.privateKey = row.privateKey === "(a valid private key)" ? await getTestPrivateKey() : row.privateKey;
+    if (row.privateKey === "(a valid private key)") {
+      entry.privateKey = await getTestPrivateKey();
+    } else if (row.privateKey === "(an authorized private key)") {
+      entry.privateKey = (await getGitFixtureAuthorizedKeyPair()).privateKey;
+    } else if (row.privateKey) {
+      entry.privateKey = row.privateKey;
     }
     if (row.pinnedHostKey && row.pinnedHostKey !== "(unset)") {
       entry.pinnedHostKey = await resolveDynamicSentinels(resolveFixtureSentinels(row.pinnedHostKey));

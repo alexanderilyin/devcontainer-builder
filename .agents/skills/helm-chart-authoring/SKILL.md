@@ -5,8 +5,8 @@ description: Gotchas learned authoring minimal Helm charts for disposable Kubern
 
 # Helm chart authoring gotchas
 
-Concrete lessons from building `charts/test-registry`, `charts/test-git-server`,
-and `charts/test-openssh-server` (disposable BDD test fixtures) in this repo.
+Concrete lessons from building `charts/test-registry` and
+`charts/test-git-server` (disposable BDD test fixtures) in this repo.
 
 ## A ConfigMap/Secret *data* change does not restart pods
 

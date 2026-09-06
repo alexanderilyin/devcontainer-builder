@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { getGitFixtureTls } from "./build_fixtures.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serviceRoot = path.resolve(__dirname, "..", "..");
@@ -30,7 +31,13 @@ function getFreePort() {
 // assert on log output (e.g. a skipped-invalid-config-entry warning).
 export async function startServer(envOverrides) {
   const port = await getFreePort();
-  const env = { ...process.env, PORT: String(port) };
+  // Real HTTPS clones against the git fixture need git to trust its
+  // self-signed cert - set this by default for every spawned server so
+  // individual scenarios never need to remember it. Harmless when
+  // irrelevant: generating the CA is local (openssl, cached after the
+  // first call), no cluster access needed.
+  const { caCertPath } = await getGitFixtureTls();
+  const env = { ...process.env, PORT: String(port), GIT_SSL_CAINFO: caCertPath };
   for (const [key, value] of Object.entries(envOverrides)) {
     if (value === undefined) {
       delete env[key];

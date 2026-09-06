@@ -19,6 +19,20 @@ Feature: Service startup configuration loading
     Then the response status should be 200
 
   @negative @server-config
+  Scenario: A git credentials config path pointing at a nonexistent file prevents startup
+    # Distinct from an *unset* path (a supported "feature not configured"
+    # state, see "no optional config paths are set" above) and from a
+    # malformed-but-present file (below) - this is a configured path that
+    # simply isn't there (e.g. a Helm mount typo), which should fail the
+    # same way a bad BUILDKIT_ENDPOINT would: fast, at startup, with a
+    # message naming which config it couldn't read.
+    Given the devcontainer-builder service is configured with:
+      | GIT_CREDENTIALS_CONFIG_PATH | /config/does-not-exist.json |
+    When the service is started
+    Then the service should fail to start
+    And the startup error should mention "failed to read git credentials config"
+
+  @negative @server-config
   Scenario: A malformed git credentials config file prevents startup
     Given a file at "/config/git-credentials.json" containing:
       """
@@ -100,14 +114,14 @@ Feature: Service startup configuration loading
 
   @server-config @needs-ssh-fixture
   Scenario: SSH_HOST_KEY_POLICY defaults to "tofu" when unset
-    # Runs against a real, disposable SSH server (see charts/openssh-server
-    # and features/support/ssh_fixture.js) rather than faking the SSH
-    # protocol. The fixture has no authorized key matching our ephemeral
-    # test key, so a real clone against it is expected to fail - but at the
-    # *authentication* step, after host-key verification already succeeded.
-    # That sequence is the real, observable signature of "TOFU scanned and
-    # trusted the host key" as opposed to "pinned" failing closed before
-    # ever attempting a connection.
+    # Runs against test-git-server's real, disposable git-ssh container
+    # (see build_fixtures.js's getTestPrivateKey) rather than faking the SSH
+    # protocol. That key is deliberately never added to the fixture's
+    # authorized_keys, so a real clone against it is expected to fail - but
+    # at the *authentication* step, after host-key verification already
+    # succeeded. That sequence is the real, observable signature of "TOFU
+    # scanned and trusted the host key" as opposed to "pinned" failing
+    # closed before ever attempting a connection.
     Given the server's git credentials are:
       | host          | kind | privateKey             | pinnedHostKey |
       | (ssh fixture) | ssh  | (a valid private key)  | (unset)       |

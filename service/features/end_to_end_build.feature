@@ -6,13 +6,7 @@ Feature: End-to-end build scenarios
 
   These complement the narrowly-scoped scenarios in the other feature files;
   they intentionally combine several resolution axes in one request rather
-  than isolating a single one. Note: no scenario here combines
-  request/server-config git credentials with a real 200 - build.ts always
-  rewrites an HTTPS/SSH-credentialed clone to a literal "https://"/"ssh://"
-  URL, and this test setup has no real TLS or git-over-SSH serving to
-  actually reach (see git_source_resolution.feature, which covers that
-  combination thoroughly via the auth-fails-after-host-key-succeeds
-  pattern instead of a live success).
+  than isolating a single one.
 
   Background:
     Given the service is running
@@ -62,6 +56,39 @@ Feature: End-to-end build scenarios
       """
     Then the response status should be 200
     And the resolved image should be "(authed registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+
+  Scenario: A server-configured SSH default combines with a registry mapping rule
+    Given the server's git credentials are:
+      | host          | kind | privateKey                  | pinnedHostKey |
+      | (ssh fixture) | ssh  | (an authorized private key) | (unset)       |
+    And the devcontainer-builder service is configured with:
+      | SSH_HOST_KEY_POLICY | tofu |
+    And the server's registry mapping rules are:
+      | pathPrefix | registry        |
+      | example/   | (test registry) |
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "https://(ssh fixture)/example/example-devcontainer.git" }
+      """
+    Then the response status should be 200
+    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+
+  Scenario: A non-default branch is actually checked out, not silently ignored
+    # Asserting against "release"'s own real HEAD sha (a genuinely different
+    # commit from "main"'s, see charts/test-git-server/values.yaml's
+    # extraBranches) - not just that the request succeeds - is what proves
+    # `branch` actually took effect. If it were silently ignored (always
+    # building "main" regardless), this would fail on a sha mismatch rather
+    # than pass for the wrong reason.
+    Given the server's registry mapping rules are:
+      | pathPrefix | registry        |
+      | example/   | (test registry) |
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "(git fixture git)/example/example-devcontainer.git", "branch": "release" }
+      """
+    Then the response status should be 200
+    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git@release)"
 
   @negative
   Scenario: A failing clone surfaces its real underlying error end to end

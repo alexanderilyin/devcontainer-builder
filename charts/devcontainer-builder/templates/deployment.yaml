@@ -29,21 +29,35 @@ spec:
               value: {{ .Values.buildkit.endpoint | quote }}
             - name: DOCKER_CONFIG
               value: /home/builder/.docker
+            - name: GIT_CREDENTIALS_CONFIG_PATH
+              value: /home/builder/.config/git-credentials.json
+            - name: REGISTRY_MAPPING_CONFIG_PATH
+              value: /home/builder/.config/registry-mapping.json
+            - name: SSH_HOST_KEY_POLICY
+              value: {{ .Values.sshHostKeyPolicy | quote }}
           volumeMounts:
             - name: registry-auth
               mountPath: /home/builder/.docker
+              readOnly: true
+            - name: git-credentials
+              mountPath: /home/builder/.config/git-credentials.json
+              subPath: git-credentials.json
+              readOnly: true
+            - name: registry-mapping
+              mountPath: /home/builder/.config/registry-mapping.json
+              subPath: registry-mapping.json
               readOnly: true
             - name: scratch
               mountPath: /tmp
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /health/ready
               port: http
             initialDelaySeconds: 2
             periodSeconds: 5
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /health/live
               port: http
             initialDelaySeconds: 5
             periodSeconds: 15
@@ -56,6 +70,16 @@ spec:
             items:
               - key: .dockerconfigjson
                 path: config.json
+        - name: git-credentials
+          secret:
+            secretName: {{ include "devcontainer-builder.gitCredentialsSecretName" . }}
+            items:
+              - key: git-credentials.json
+                path: git-credentials.json
+                mode: 0400
+        - name: registry-mapping
+          configMap:
+            name: {{ include "devcontainer-builder.fullname" . }}-registry-mapping
         - name: scratch
           emptyDir:
             sizeLimit: {{ .Values.scratchVolume.sizeLimit }}

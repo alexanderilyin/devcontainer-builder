@@ -19,6 +19,40 @@ registryAuth:
   existingSecret: ""
   dockerConfigJson: ""
 
+gitCredentials:
+  # Server-side default git credentials, looked up by host when a request
+  # doesn't supply its own gitCredentials. Provide either an existing Secret
+  # (must contain a `git-credentials.json` key, same array shape as `entries`
+  # below) or inline entries, which get rendered into a chart-managed Secret.
+  existingSecret: ""
+  entries: []
+  # entries:
+  #   - host: github.com
+  #     kind: https
+  #     username: svc-bot
+  #     token: ghp_...
+  #   - host: gitlab.internal.example.com
+  #     kind: ssh
+  #     privateKey: |
+  #       -----BEGIN OPENSSH PRIVATE KEY-----
+  #       ...
+  #     pinnedHostKey: "gitlab.internal.example.com ssh-ed25519 AAAA..."
+
+# tofu = trust-on-first-use via ssh-keyscan at clone time; pinned = require
+# entries.[].pinnedHostKey for every SSH git credential (fails closed if
+# missing for a host using SSH creds under this policy).
+sshHostKeyPolicy: tofu
+
+registryMapping:
+  # Non-sensitive repo -> registry routing rules, used to resolve
+  # image.registry when a request omits it. First matching rule wins, rules
+  # are checked in the order given.
+  rules: []
+  # rules:
+  #   - hostMatch: github.com
+  #     pathPrefix: "org-a/"
+  #     registry: ghcr.io/org-a
+
 resources:
   requests:
     cpu: 250m

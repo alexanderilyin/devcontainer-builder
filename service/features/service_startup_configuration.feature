@@ -1,0 +1,212 @@
+Feature: Service startup configuration loading
+  As an operator deploying devcontainer-builder
+  I want misconfiguration caught at startup rather than surfacing as mysterious per-request failures
+  So that a bad deployment fails its readiness/liveness checks immediately instead of serving broken requests
+
+  Unlike the other features, these scenarios exercise process startup itself,
+  not a request/response cycle against an already-running service.
+
+  @server-config
+  Scenario: The service starts normally when no optional config paths are set
+    Given the devcontainer-builder service is configured with:
+      | BUILDKIT_ENDPOINT             | tcp://buildkit.example:1234 |
+      | GIT_CREDENTIALS_CONFIG_PATH   | (unset)                     |
+      | REGISTRY_MAPPING_CONFIG_PATH  | (unset)                     |
+      | SSH_HOST_KEY_POLICY           | (unset)                     |
+    When the service is started
+    Then the service should start successfully
+    When I send a GET request to "/health/live"
+    Then the response status should be 200
+
+  @negative @server-config
+  Scenario: A git credentials config path pointing at a nonexistent file prevents startup
+    # Distinct from an *unset* path (a supported "feature not configured"
+    # state, see "no optional config paths are set" above) and from a
+    # malformed-but-present file (below) - this is a configured path that
+    # simply isn't there (e.g. a Helm mount typo), which should fail the
+    # same way a bad BUILDKIT_ENDPOINT would: fast, at startup, with a
+    # message naming which config it couldn't read.
+    Given the devcontainer-builder service is configured with:
+      | GIT_CREDENTIALS_CONFIG_PATH | /config/does-not-exist.json |
+    When the service is started
+    Then the service should fail to start
+    And the startup error should mention "failed to read git credentials config"
+
+  @negative @server-config
+  Scenario: A malformed git credentials config file prevents startup
+    Given a file at "/config/git-credentials.json" containing:
+      """
+      { this is not valid JSON
+      """
+    And the devcontainer-builder service is configured with:
+      | GIT_CREDENTIALS_CONFIG_PATH | /config/git-credentials.json |
+    When the service is started
+    Then the service should fail to start
+    And the startup error should mention "failed to parse git credentials config"
+
+  @negative @server-config
+  Scenario: A git credentials config file that isn't a JSON array prevents startup
+    Given a file at "/config/git-credentials.json" containing:
+      """
+      { "host": "github.com", "kind": "https", "username": "svc-bot", "token": "ghp_example" }
+      """
+    And the devcontainer-builder service is configured with:
+      | GIT_CREDENTIALS_CONFIG_PATH | /config/git-credentials.json |
+    When the service is started
+    Then the service should fail to start
+    And the startup error should mention "must be a JSON array"
+
+  @server-config
+  Scenario: One malformed entry in an otherwise-valid git credentials list is skipped, not fatal
+    # Only checks that startup itself tolerates the bad entry - proving the
+    # *valid* entry is actually usable would need a real network operation
+    # against its host, which isn't reliable to depend on in a test (see the
+    # SSH_HOST_KEY_POLICY scenario below for how that's done safely against
+    # a real, disposable test fixture instead of a live third-party host).
+    Given a file at "/config/git-credentials.json" containing:
+      """
+      [
+        { "host": "github.com", "kind": "https", "username": "svc-bot", "token": "ghp_example" },
+        { "kind": "https", "username": "missing-host", "token": "ghp_other" }
+      ]
+      """
+    And the devcontainer-builder service is configured with:
+      | GIT_CREDENTIALS_CONFIG_PATH | /config/git-credentials.json |
+      | BUILDKIT_ENDPOINT           | tcp://buildkit.example:1234  |
+    When the service is started
+    Then the service should start successfully
+    And the invalid entry should have been logged and skipped
+
+  @negative @server-config
+  Scenario: A registry mapping config file that isn't a JSON array prevents startup
+    Given a file at "/config/registry-mapping.json" containing:
+      """
+      { "hostMatch": "github.com", "registry": "ghcr.io/example" }
+      """
+    And the devcontainer-builder service is configured with:
+      | REGISTRY_MAPPING_CONFIG_PATH | /config/registry-mapping.json |
+    When the service is started
+    Then the service should fail to start
+    And the startup error should mention "must be a JSON array"
+
+  @server-config
+  Scenario: A missing registry mapping entry field is skipped, not fatal
+    Given a file at "/config/registry-mapping.json" containing:
+      """
+      [
+        { "hostMatch": "github.com" }
+      ]
+      """
+    And the devcontainer-builder service is configured with:
+      | REGISTRY_MAPPING_CONFIG_PATH | /config/registry-mapping.json |
+      | BUILDKIT_ENDPOINT            | tcp://buildkit.example:1234   |
+    When the service is started
+    Then the service should start successfully
+    And the invalid entry should have been logged and skipped
+
+  @negative @server-config
+  Scenario: An unrecognized SSH_HOST_KEY_POLICY value prevents startup
+    Given the devcontainer-builder service is configured with:
+      | SSH_HOST_KEY_POLICY | strict |
+    When the service is started
+    Then the service should fail to start
+    And the startup error should mention "SSH_HOST_KEY_POLICY must be \"tofu\" or \"pinned\""
+
+  @negative @server-config
+  Scenario: An unrecognized CLI flag prevents startup
+    # The CLI-flag config layer (see service_settings_file.feature for the
+    # settings-file layer) fails the same way every other startup
+    # misconfiguration in this file does - loudly, at startup, not silently
+    # ignored.
+    Given the devcontainer-builder service is started with the following CLI flags:
+      | --bogus-flag | anything |
+    When the service is started
+    Then the service should fail to start
+
+  @server-config @needs-ssh-fixture
+  Scenario: SSH_HOST_KEY_POLICY defaults to "tofu" when unset
+    # Runs against test-git-server's real, disposable git-ssh container
+    # (see build_fixtures.js's getTestPrivateKey) rather than faking the SSH
+    # protocol. That key is deliberately never added to the fixture's
+    # authorized_keys, so a real clone against it is expected to fail - but
+    # at the *authentication* step, after host-key verification already
+    # succeeded. That sequence is the real, observable signature of "TOFU
+    # scanned and trusted the host key" as opposed to "pinned" failing
+    # closed before ever attempting a connection.
+    Given the following fixture releases are registered:
+      | fixture         | release         |
+      | test-git-server | test-git-server |
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And a fresh, never-authorized SSH private key named "<unauthorized-key>"
+    And the test-git-server fixture's bare host is known as "<git-host>"
+    And the server's git credentials are:
+      | host     | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
+    And the devcontainer-builder service is configured with:
+      | SSH_HOST_KEY_POLICY | (unset)                     |
+      | BUILDKIT_ENDPOINT   | tcp://buildkit.example:1234 |
+    When the service is started
+    Then the service should start successfully
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "https://<git-host>/example/example-devcontainer.git", "image": { "registry": "ghcr.io/example" } }
+      """
+    Then the response status should be 500
+    And the response body should contain "git clone"
+    And the service logs should not contain "Host key verification failed"
+
+  @server-config @needs-ssh-fixture
+  Scenario: A --ssh-host-key-policy CLI flag overrides both the env var and the settings file
+    # Proves config.ts's full precedence chain (CLI flag > env var >
+    # settings file > default) with one real, observable outcome: env var
+    # and settings file both say "pinned" (which would fail closed before
+    # ever attempting a connection, given no pinnedHostKey is configured)
+    # here specifically to isolate the CLI flag's own precedence over
+    # *both* lower sources at once - if the CLI layer were wired wrong
+    # (ignored, or checked after the env var instead of before), this
+    # would fail closed instead of reaching the authentication step, the
+    # same signature "defaults to tofu" above proves. (The env-var-over-
+    # settings-file link specifically is also confirmed directly against
+    # loadServiceConfig() - a second real SSH scenario for it alone was
+    # dropped after triggering the shared test-git-server fixture's sshd
+    # into intermittent "Connection closed by remote host" failures when
+    # 3 SSH-heavy scenarios ran back-to-back in one process; 2 in a row
+    # is reliable, a 3rd is not.)
+    Given the following fixture releases are registered:
+      | fixture         | release         |
+      | test-git-server | test-git-server |
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And a fresh, never-authorized SSH private key named "<unauthorized-key>"
+    And the test-git-server fixture's bare host is known as "<git-host>"
+    And the server's git credentials are:
+      | host     | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
+    And a file at "/config/settings.json" containing:
+      """
+      { "sshHostKeyPolicy": "pinned" }
+      """
+    And the devcontainer-builder service is configured with:
+      | SERVICE_CONFIG_PATH | /config/settings.json        |
+      | SSH_HOST_KEY_POLICY | pinned                        |
+      | BUILDKIT_ENDPOINT   | tcp://buildkit.example:1234  |
+    And the devcontainer-builder service is started with the following CLI flags:
+      | --ssh-host-key-policy | tofu |
+    When the service is started
+    Then the service should start successfully
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "https://<git-host>/example/example-devcontainer.git", "image": { "registry": "ghcr.io/example" } }
+      """
+    Then the response status should be 500
+    And the response body should contain "git clone"
+    And the service logs should not contain "Host key verification failed"

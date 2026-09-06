@@ -13,11 +13,16 @@ function trackTempFile(world, filePath) {
   return filePath;
 }
 
-Given("the service is running", function () {
-  // Documents scenario intent; the actual process is spawned lazily on the
-  // first request (see ensureServerStarted) so that a later
-  // "configured with"/"credentials are" step still gets to set env vars
-  // before the process starts - env vars are only read once at module load.
+// Actually starts the real compiled server (via ensureServerStarted),
+// using whatever env has been accumulated by "configured with"/
+// "credentials are" steps so far - which means every one of those must
+// appear *before* this step in a scenario, not after. Every ".feature"
+// file using this step has been ordered accordingly: config first, then
+// this, then requests. A "configured with"/"credentials are" step written
+// after this one is a bug - it would silently have no effect, since the
+// spawned process's environment is fixed at spawn time.
+Given("the service is running", async function () {
+  await ensureServerStarted(this);
 });
 
 Given("the devcontainer-builder service is configured with:", function (dataTable) {

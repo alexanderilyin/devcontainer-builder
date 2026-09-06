@@ -17,13 +17,13 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   process exits.
 
   Background:
-    Given the service is running
-    And the devcontainer-builder service is configured with:
+    Given the devcontainer-builder service is configured with:
       | BUILDKIT_ENDPOINT | (test buildkit) |
 
   @client-request
   Scenario Outline: No credentials resolve anywhere - the given URL is cloned verbatim
     Given the server has no git credentials configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "<repository>", "image": { "registry": "(test registry)" } }
@@ -41,6 +41,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @negative @client-request
   Scenario: An unparseable repository URL is rejected
     Given the server has no git credentials configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "not a git url at all", "image": { "registry": "(test registry)" } }
@@ -54,6 +55,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @client-request
   Scenario: Request-level gitCredentials rewrite an SCP-style URL to HTTPS
     Given the server has no git credentials configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -70,6 +72,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     Given the server's git credentials are:
       | host               | kind  | username | token       |
       | (git fixture host) | https | svc-bot  | ghp_example |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -84,6 +87,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | (an authorized private key) | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "https://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -101,6 +105,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     Given the server's git credentials are:
       | host               | kind | privateKey            | pinnedHostKey |
       | (git fixture host) | ssh  | (a valid private key) | (unset)       |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -121,6 +126,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | host               | kind  | username  | token         |
       | (git fixture host) | https | svc-bot   | ghp_example   |
       | git.invalid        | https | other-bot | glpat_example |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "git@(git fixture host):example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -139,6 +145,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     Given the server's git credentials are:
       | host        | kind  | username | token       |
       | example.com | https | svc-bot  | ghp_example |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -152,6 +159,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | (a valid private key) | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -167,6 +175,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | (a valid private key) | (ssh fixture host key)  |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -182,6 +191,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | (a valid private key) | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -203,6 +213,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | (an authorized private key) | (ssh fixture host key) |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -221,6 +232,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | (an authorized private key) | (wrong ssh fixture host key) |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -239,6 +251,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
       | (ssh fixture) | ssh  | this is not a real private key at all  | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
@@ -250,6 +263,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @negative
   Scenario Outline: A failed clone surfaces as a 500 regardless of the credential path used
     Given the server has no git credentials configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "<repository>", "image": { "registry": "(test registry)" } }

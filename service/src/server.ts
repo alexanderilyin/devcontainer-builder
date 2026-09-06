@@ -59,12 +59,12 @@ function isValidBuildRequest(value: unknown): value is BuildRequest {
 }
 
 const server = createServer(async (req, res) => {
-  if (req.method === "GET" && req.url === "/healthz") {
+  if (req.method === "GET" && req.url === "/health/live") {
     sendJson(res, 200, { status: "ok" });
     return;
   }
 
-  if (req.method === "GET" && req.url === "/readyz") {
+  if (req.method === "GET" && req.url === "/health/ready") {
     const readiness = isReady();
     if (readiness.ready) {
       sendJson(res, 200, { status: "ready" });

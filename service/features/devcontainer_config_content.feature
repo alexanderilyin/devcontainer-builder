@@ -12,11 +12,11 @@ Feature: devcontainer.json content validity, once it's been found
   different real path through the devcontainer CLI and BuildKit).
 
   Background:
-    Given the service is running
-    And the devcontainer-builder service is configured with:
+    Given the devcontainer-builder service is configured with:
       | BUILDKIT_ENDPOINT | (test buildkit) |
     And the server has no git credentials configured
     And the server's registry mapping rules are empty
+    And the service is running
 
   @negative @client-request
   Scenario: A syntactically valid but empty devcontainer.json fails clearly

@@ -9,8 +9,7 @@ Feature: End-to-end build scenarios
   than isolating a single one.
 
   Background:
-    Given the service is running
-    And the devcontainer-builder service is configured with:
+    Given the devcontainer-builder service is configured with:
       | BUILDKIT_ENDPOINT | (test buildkit) |
     And the server has no git credentials configured
 
@@ -18,6 +17,7 @@ Feature: End-to-end build scenarios
     Given the server's registry mapping rules are:
       | pathPrefix | registry        |
       | example/   | (test registry) |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -30,6 +30,7 @@ Feature: End-to-end build scenarios
       | pathPrefix | registry        |
       | example/   | (test registry) |
     And the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -47,6 +48,7 @@ Feature: End-to-end build scenarios
       | pathPrefix | registry           |
       | example/   | (authed registry)  |
     And the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -66,6 +68,7 @@ Feature: End-to-end build scenarios
     And the server's registry mapping rules are:
       | pathPrefix | registry        |
       | example/   | (test registry) |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "https://(ssh fixture)/example/example-devcontainer.git" }
@@ -83,6 +86,7 @@ Feature: End-to-end build scenarios
     Given the server's registry mapping rules are:
       | pathPrefix | registry        |
       | example/   | (test registry) |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git", "branch": "release" }
@@ -92,6 +96,7 @@ Feature: End-to-end build scenarios
 
   @negative
   Scenario: A failing clone surfaces its real underlying error end to end
+    Given the service is running
     When I send a POST request to "/build" with body:
       """
       {

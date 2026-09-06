@@ -11,14 +11,14 @@ Feature: Registry push authentication
   disposable BuildKit instance does the actual push in every scenario.
 
   Background:
-    Given the service is running
-    And the devcontainer-builder service is configured with:
+    Given the devcontainer-builder service is configured with:
       | BUILDKIT_ENDPOINT | (test buildkit) |
     And the server has no git credentials configured
     And the server's registry mapping rules are empty
 
   @client-request
   Scenario: No credentials at all succeed against a registry that doesn't require auth
+    Given the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -31,6 +31,7 @@ Feature: Registry push authentication
   @client-request
   Scenario: Correct ambient registry auth succeeds against an auth-enforcing registry
     Given the ambient registry auth is configured for "(authed registry)" with username "svc-bot" and password "hunter2"
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -43,6 +44,7 @@ Feature: Registry push authentication
   @negative @client-request
   Scenario: No ambient registry auth and no registryCredentials fails against an auth-enforcing registry
     Given the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -56,6 +58,7 @@ Feature: Registry push authentication
   @client-request
   Scenario: Correct registryCredentials succeed against an auth-enforcing registry with no ambient auth
     Given the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -69,6 +72,7 @@ Feature: Registry push authentication
   @negative @client-request
   Scenario: Wrong registryCredentials fail against an auth-enforcing registry
     Given the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -83,6 +87,7 @@ Feature: Registry push authentication
   @negative @client-request
   Scenario: registryCredentials for a different registry than image.registry have no effect on the actual push
     Given the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -101,6 +106,7 @@ Feature: Registry push authentication
     # relies on. Only observable from outside as "both requests still
     # work" - internal buildx builder reuse isn't visible over HTTP.
     Given the ambient registry auth is not configured
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {

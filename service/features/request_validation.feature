@@ -14,9 +14,9 @@ Feature: POST /build request shape validation
   network-dependent) clone attempt.
 
   Background:
-    Given the service is running
-    And the devcontainer-builder service is configured with:
+    Given the devcontainer-builder service is configured with:
       | BUILDKIT_ENDPOINT | tcp://buildkit.example:1234 |
+    And the service is running
 
   @negative
   Scenario: A malformed JSON body is rejected

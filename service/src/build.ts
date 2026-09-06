@@ -132,7 +132,7 @@ async function withSshKeyEnv<T>(
     }
     await chmod(knownHostsPath, 0o600);
 
-    const gitSshCommand = `ssh -i ${keyPath} -o UserKnownHostsFile=${knownHostsPath} -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes`;
+    const gitSshCommand = `ssh -i ${keyPath} -o UserKnownHostsFile=${knownHostsPath} -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -o BatchMode=yes`;
 
     return await fn({ ...process.env, GIT_SSH_COMMAND: gitSshCommand, GIT_TERMINAL_PROMPT: "0" });
   } finally {
@@ -272,7 +272,19 @@ export async function buildDevcontainer(req: BuildRequest): Promise<string> {
         run("git", cloneArgs, env),
       );
     } else {
-      await run("git", cloneArgs, { ...process.env, GIT_TERMINAL_PROMPT: "0" });
+      // GIT_TERMINAL_PROMPT=0 only suppresses git's own (HTTPS-style)
+      // credential prompts - it does nothing for the `ssh` subprocess git
+      // spawns underneath for an ssh://SCP-style URL with no credential
+      // configured. Without BatchMode=yes, an unrecognized host or a
+      // rejected identity lets ssh fall through to an interactive host-key
+      // confirmation or password prompt - invisible in automated testing
+      // (no TTY attached, so ssh just fails immediately instead), but a
+      // real hang risk for a backend service if one ever is attached.
+      await run("git", cloneArgs, {
+        ...process.env,
+        GIT_TERMINAL_PROMPT: "0",
+        GIT_SSH_COMMAND: "ssh -o BatchMode=yes",
+      });
     }
 
     const { stdout: headSha } = await runCapture("git", ["rev-parse", "HEAD"], { cwd: repoDir });

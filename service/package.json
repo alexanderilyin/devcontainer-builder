@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
+    "test": "npm run build && cucumber-js --import 'features/support/*.js' --import 'features/support/optional/build_fixtures_hooks.js' --import 'features/step_definitions/**/*.js' features/*.feature",
     "test:health": "npm run build && cucumber-js --import 'features/support/*.js' --import 'features/step_definitions/**/*.js' features/health.feature",
     "test:request-validation": "npm run build && cucumber-js --import 'features/support/*.js' --import 'features/step_definitions/**/*.js' features/request_validation.feature",
     "test:service-startup-configuration": "npm run build && cucumber-js --import 'features/support/*.js' --import 'features/support/optional/build_fixtures_hooks.js' --import 'features/step_definitions/**/*.js' features/service_startup_configuration.feature",

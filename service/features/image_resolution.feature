@@ -9,14 +9,14 @@ Feature: Image name, tag, and registry resolution
   SHA (a real, content-derived value, not one a scenario can dictate).
 
   Background:
-    Given the service is running
-    And the devcontainer-builder service is configured with:
+    Given the devcontainer-builder service is configured with:
       | BUILDKIT_ENDPOINT | (test buildkit) |
     And the server has no git credentials configured
 
   @client-request
   Scenario: A fully-specified image target is used verbatim
     Given the server's registry mapping rules are empty
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -32,6 +32,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | pathPrefix | registry         |
       | example/   | (test registry)  |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -44,6 +45,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | pathPrefix | registry         |
       | example/   | (test registry)  |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -57,6 +59,7 @@ Feature: Image name, tag, and registry resolution
   @client-request
   Scenario Outline: The derived name strips a trailing .git and uses the last path segment
     Given the server's registry mapping rules are empty
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "<repository>", "image": { "registry": "(test registry)" } }
@@ -75,6 +78,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | hostMatch          | registry        |
       | (git fixture host) | (test registry) |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -87,6 +91,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | pathPrefix | registry        |
       | example/   | (test registry) |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -99,6 +104,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | registry        |
       | (test registry) |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -112,6 +118,7 @@ Feature: Image name, tag, and registry resolution
       | pathPrefix | registry             |
       | example/   | (test registry)      |
       |            | (authed registry)    |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -124,6 +131,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | pathPrefix | registry           |
       | example/   | (authed registry)  |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       {
@@ -137,6 +145,7 @@ Feature: Image name, tag, and registry resolution
   @negative @client-request
   Scenario: No image.registry given and no rule matches is a 400, not a 500
     Given the server's registry mapping rules are empty
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }
@@ -149,6 +158,7 @@ Feature: Image name, tag, and registry resolution
     Given the server's registry mapping rules are:
       | hostMatch                    | registry           |
       | gitlab.internal.example.com  | (test registry)    |
+    And the service is running
     When I send a POST request to "/build" with body:
       """
       { "repository": "(git fixture git)/example/example-devcontainer.git" }

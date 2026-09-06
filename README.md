@@ -46,6 +46,18 @@ out to Kubernetes to provision a PersistentVolumeClaim before the pod.
     why `test-git-server`'s pods show transient `Unhealthy` readiness-probe
     events on every fresh start (installing packages at container startup
     instead of a pre-built image), and the deferred fix.
+  - [devcontainer-subfolder-config-discovery](docs/claude/notes/devcontainer-subfolder-config-discovery.md) -
+    the devcontainer CLI doesn't auto-discover a `.devcontainer/<folder>/`
+    config; a real fix needs a discovery step ahead of devcontainer-builder,
+    not just a `configPath` field on `/build`.
+  - [devcontainer-cli-test-prerequisite](docs/claude/notes/devcontainer-cli-test-prerequisite.md) -
+    the BDD suite's real-build scenarios need the `devcontainer` CLI on the
+    *host* running `npm test`, not just baked into the deployable image -
+    easy to hit fresh as `spawn devcontainer ENOENT`.
+  - [git-ssh-interactive-prompt-hang](docs/claude/notes/git-ssh-interactive-prompt-hang.md) -
+    a git-over-SSH clone with no credential configured could hang on a real
+    host-key/password prompt - invisible to the BDD suite (no TTY ever
+    attached), fixed with `-o BatchMode=yes`.
 - [`.agents/skills/`](.agents/skills) - reusable [Agent
   Skills](https://www.skills.sh/) distilling hard-won gotchas from building
   this repo's Helm charts, BuildKit/buildx usage, git protocol test

@@ -15,7 +15,7 @@ Feature: Service startup configuration loading
       | SSH_HOST_KEY_POLICY           | (unset)                     |
     When the service is started
     Then the service should start successfully
-    When I send a GET request to "/healthz"
+    When I send a GET request to "/health/live"
     Then the response status should be 200
 
   @negative @server-config

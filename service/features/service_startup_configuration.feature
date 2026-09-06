@@ -112,6 +112,17 @@ Feature: Service startup configuration loading
     Then the service should fail to start
     And the startup error should mention "SSH_HOST_KEY_POLICY must be \"tofu\" or \"pinned\""
 
+  @negative @server-config
+  Scenario: An unrecognized CLI flag prevents startup
+    # The CLI-flag config layer (see service_settings_file.feature for the
+    # settings-file layer) fails the same way every other startup
+    # misconfiguration in this file does - loudly, at startup, not silently
+    # ignored.
+    Given the devcontainer-builder service is started with the following CLI flags:
+      | --bogus-flag | anything |
+    When the service is started
+    Then the service should fail to start
+
   @server-config @needs-ssh-fixture
   Scenario: SSH_HOST_KEY_POLICY defaults to "tofu" when unset
     # Runs against test-git-server's real, disposable git-ssh container
@@ -122,9 +133,20 @@ Feature: Service startup configuration loading
     # succeeded. That sequence is the real, observable signature of "TOFU
     # scanned and trusted the host key" as opposed to "pinned" failing
     # closed before ever attempting a connection.
-    Given the server's git credentials are:
-      | host          | kind | privateKey             | pinnedHostKey |
-      | (ssh fixture) | ssh  | (a valid private key)  | (unset)       |
+    Given the following fixture releases are registered:
+      | fixture         | release         |
+      | test-git-server | test-git-server |
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And a fresh, never-authorized SSH private key named "<unauthorized-key>"
+    And the test-git-server fixture's bare host is known as "<git-host>"
+    And the server's git credentials are:
+      | host     | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | (unset)                     |
       | BUILDKIT_ENDPOINT   | tcp://buildkit.example:1234 |
@@ -132,7 +154,58 @@ Feature: Service startup configuration loading
     Then the service should start successfully
     When I send a POST request to "/build" with body:
       """
-      { "repository": "https://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "ghcr.io/example" } }
+      { "repository": "https://<git-host>/example/example-devcontainer.git", "image": { "registry": "ghcr.io/example" } }
+      """
+    Then the response status should be 500
+    And the response body should contain "git clone"
+    And the service logs should not contain "Host key verification failed"
+
+  @server-config @needs-ssh-fixture
+  Scenario: A --ssh-host-key-policy CLI flag overrides both the env var and the settings file
+    # Proves config.ts's full precedence chain (CLI flag > env var >
+    # settings file > default) with one real, observable outcome: env var
+    # and settings file both say "pinned" (which would fail closed before
+    # ever attempting a connection, given no pinnedHostKey is configured)
+    # here specifically to isolate the CLI flag's own precedence over
+    # *both* lower sources at once - if the CLI layer were wired wrong
+    # (ignored, or checked after the env var instead of before), this
+    # would fail closed instead of reaching the authentication step, the
+    # same signature "defaults to tofu" above proves. (The env-var-over-
+    # settings-file link specifically is also confirmed directly against
+    # loadServiceConfig() - a second real SSH scenario for it alone was
+    # dropped after triggering the shared test-git-server fixture's sshd
+    # into intermittent "Connection closed by remote host" failures when
+    # 3 SSH-heavy scenarios ran back-to-back in one process; 2 in a row
+    # is reliable, a 3rd is not.)
+    Given the following fixture releases are registered:
+      | fixture         | release         |
+      | test-git-server | test-git-server |
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And a fresh, never-authorized SSH private key named "<unauthorized-key>"
+    And the test-git-server fixture's bare host is known as "<git-host>"
+    And the server's git credentials are:
+      | host     | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
+    And a file at "/config/settings.json" containing:
+      """
+      { "sshHostKeyPolicy": "pinned" }
+      """
+    And the devcontainer-builder service is configured with:
+      | SERVICE_CONFIG_PATH | /config/settings.json        |
+      | SSH_HOST_KEY_POLICY | pinned                        |
+      | BUILDKIT_ENDPOINT   | tcp://buildkit.example:1234  |
+    And the devcontainer-builder service is started with the following CLI flags:
+      | --ssh-host-key-policy | tofu |
+    When the service is started
+    Then the service should start successfully
+    When I send a POST request to "/build" with body:
+      """
+      { "repository": "https://<git-host>/example/example-devcontainer.git", "image": { "registry": "ghcr.io/example" } }
       """
     Then the response status should be 500
     And the response body should contain "git clone"

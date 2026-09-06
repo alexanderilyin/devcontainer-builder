@@ -4,13 +4,34 @@ Feature: Image name, tag, and registry resolution
   So that I don't have to compute a registry, name, or tag myself for every build
 
   Runs real builds against the git-daemon fixture and the anonymous test
-  registry (see features/support/build_fixtures.js) - the "(head:<repo
-  path>)" sentinel resolves to the fixture repo's actual current HEAD short
-  SHA (a real, content-derived value, not one a scenario can dictate).
+  registry (see features/support/build_fixtures.js) - "the current HEAD
+  short sha of ... is known as ..." captures the fixture repo's actual
+  current HEAD short sha (a real, content-derived value, not one a
+  scenario can dictate) for later assertions to reference by name.
 
   Background:
-    Given the devcontainer-builder service is configured with:
-      | BUILDKIT_ENDPOINT | (test buildkit) |
+    Given the following fixture releases are registered:
+      | fixture              | release              |
+      | test-registry        | test-registry        |
+      | test-registry-authed | test-registry-authed |
+      | test-buildkit        | test-buildkit         |
+      | test-git-server      | test-git-server       |
+    And the test-registry fixture is deployed
+    And the test-registry-authed fixture is deployed with username "svc-bot" and password "hunter2"
+    And the test-buildkit fixture is deployed, trusting test-registry and test-registry-authed as insecure registries
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And the test-registry fixture's URL is known as "<registry-url>"
+    And the test-registry-authed fixture's URL is known as "<authed-registry-url>"
+    And the test-buildkit fixture's endpoint is known as "<buildkit-endpoint>"
+    And the test-git-server fixture's bare host is known as "<git-host>"
+    And the test-git-server fixture's git protocol URL is known as "<git-url>"
+    And the devcontainer-builder service is configured with:
+      | BUILDKIT_ENDPOINT | <buildkit-endpoint> |
     And the server has no git credentials configured
 
   @client-request
@@ -20,127 +41,135 @@ Feature: Image name, tag, and registry resolution
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(test registry)", "name": "custom-name", "tag": "v1.2.3" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<registry-url>", "name": "custom-name", "tag": "v1.2.3" }
       }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/custom-name:v1.2.3"
+    And the resolved image should be "<registry-url>/custom-name:v1.2.3"
 
   @server-config @client-request
   Scenario: Omitting image entirely derives registry, name, and tag
     Given the server's registry mapping rules are:
       | pathPrefix | registry         |
-      | example/   | (test registry)  |
+      | example/   | <registry-url>  |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/example-devcontainer:sha-<expected-sha>"
 
   @client-request
   Scenario: A partially-specified image target derives only the missing fields
     Given the server's registry mapping rules are:
       | pathPrefix | registry         |
-      | example/   | (test registry)  |
+      | example/   | <registry-url>  |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
+        "repository": "<git-url>/example/example-devcontainer.git",
         "image": { "name": "custom-name" }
       }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/custom-name:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/custom-name:sha-<expected-sha>"
 
   @client-request
   Scenario Outline: The derived name strips a trailing .git and uses the last path segment
     Given the server's registry mapping rules are empty
+    And the current HEAD short sha of "<repo-path>" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "<repository>", "image": { "registry": "(test registry)" } }
+      { "repository": "<repository>", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/<expected-name>:sha-(head:<repo-path>)"
+    And the resolved image should be "<registry-url>/<expected-name>:sha-<expected-sha>"
 
     Examples:
       | repository                                            | repo-path                          | expected-name            |
-      | (git fixture git)/example/example-devcontainer.git    | example/example-devcontainer.git   | example-devcontainer     |
-      | (git fixture git)/example/sub/example-devcontainer     | example/sub/example-devcontainer   | example-devcontainer     |
-      | (git fixture git)/solo-repo.git                        | solo-repo.git                      | solo-repo                |
+      | <git-url>/example/example-devcontainer.git    | example/example-devcontainer.git   | example-devcontainer     |
+      | <git-url>/example/sub/example-devcontainer     | example/sub/example-devcontainer   | example-devcontainer     |
+      | <git-url>/solo-repo.git                        | solo-repo.git                      | solo-repo                |
 
   @server-config
   Scenario: A registry mapping rule matching on hostMatch only applies to any path on that host
     Given the server's registry mapping rules are:
       | hostMatch          | registry        |
-      | (git fixture host) | (test registry) |
+      | <git-host> | <registry-url> |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/example-devcontainer:sha-<expected-sha>"
 
   @server-config
   Scenario: A registry mapping rule matching on pathPrefix only applies regardless of host
     Given the server's registry mapping rules are:
       | pathPrefix | registry        |
-      | example/   | (test registry) |
+      | example/   | <registry-url> |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/example-devcontainer:sha-<expected-sha>"
 
   @server-config
   Scenario: A rule with neither hostMatch nor pathPrefix is a universal fallback
     Given the server's registry mapping rules are:
       | registry        |
-      | (test registry) |
+      | <registry-url> |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/example-devcontainer:sha-<expected-sha>"
 
   @server-config
   Scenario: The first matching rule wins when more than one rule matches
     Given the server's registry mapping rules are:
       | pathPrefix | registry             |
-      | example/   | (test registry)      |
-      |            | (authed registry)    |
+      | example/   | <registry-url>      |
+      |            | <authed-registry-url>    |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/example-devcontainer:sha-<expected-sha>"
 
   @client-request
   Scenario: An explicit image.registry wins over a matching registry mapping rule
     Given the server's registry mapping rules are:
       | pathPrefix | registry           |
-      | example/   | (authed registry)  |
+      | example/   | <authed-registry-url>  |
+    And the current HEAD short sha of "example/example-devcontainer.git" is known as "<expected-sha>"
     And the service is running
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(test registry)" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<registry-url>" }
       }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/example-devcontainer:sha-(head:example/example-devcontainer.git)"
+    And the resolved image should be "<registry-url>/example-devcontainer:sha-<expected-sha>"
 
   @negative @client-request
   Scenario: No image.registry given and no rule matches is a 400, not a 500
@@ -148,7 +177,7 @@ Feature: Image name, tag, and registry resolution
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 400
     And the response body should contain "no registry resolved for repository"
@@ -157,10 +186,10 @@ Feature: Image name, tag, and registry resolution
   Scenario: A non-matching registry mapping rule does not accidentally apply
     Given the server's registry mapping rules are:
       | hostMatch                    | registry           |
-      | gitlab.internal.example.com  | (test registry)    |
+      | gitlab.internal.example.com  | <registry-url>    |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git" }
+      { "repository": "<git-url>/example/example-devcontainer.git" }
       """
     Then the response status should be 400

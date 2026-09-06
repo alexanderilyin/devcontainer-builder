@@ -8,7 +8,8 @@
       "extensions": [
         "hashicorp.terraform",
         "redhat.vscode-yaml",
-        "alexkrechik.cucumberautocomplete"
+        "alexkrechik.cucumberautocomplete",
+        "HashiCorp.terraform"
       ]
     }
   }

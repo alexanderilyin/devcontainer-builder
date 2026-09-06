@@ -1,8 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { buildDevcontainer, isReady, BuildRequestError } from "./build.js";
+import { buildDevcontainer, isReady, serviceConfig, BuildRequestError } from "./build.js";
 import type { BuildRequest } from "./types.js";
-
-const PORT = Number(process.env.PORT ?? 8080);
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -108,6 +106,6 @@ const server = createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
-  console.log(`devcontainer-builder listening on :${PORT}`);
+server.listen(serviceConfig.port, () => {
+  console.log(`devcontainer-builder listening on :${serviceConfig.port}`);
 });

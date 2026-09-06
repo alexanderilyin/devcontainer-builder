@@ -13,20 +13,43 @@ Feature: devcontainer.json discovery after clone
   and used the config, not an inferred signal.
 
   Background:
-    Given the devcontainer-builder service is configured with:
-      | BUILDKIT_ENDPOINT | (test buildkit) |
+    # The buildkit fixture's trust config always needs both registry
+    # hosts, even though this file never itself pushes to the authed one -
+    # its deploy is memoized process-wide, so whichever file's Background
+    # happens to trigger it first must have the complete picture, not just
+    # what that one file personally uses.
+    Given the following fixture releases are registered:
+      | fixture              | release              |
+      | test-registry        | test-registry        |
+      | test-registry-authed | test-registry-authed |
+      | test-buildkit        | test-buildkit         |
+      | test-git-server      | test-git-server       |
+    And the test-registry fixture is deployed
+    And the test-buildkit fixture is deployed, trusting test-registry and test-registry-authed as insecure registries
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And the test-registry fixture's URL is known as "<registry-url>"
+    And the test-buildkit fixture's endpoint is known as "<buildkit-endpoint>"
+    And the test-git-server fixture's git protocol URL is known as "<git-url>"
+    And the devcontainer-builder service is configured with:
+      | BUILDKIT_ENDPOINT | <buildkit-endpoint> |
     And the server has no git credentials configured
     And the server's registry mapping rules are empty
     And the service is running
 
   @client-request
   Scenario Outline: A devcontainer.json at the root or the standard .devcontainer/ location is found automatically
+    Given the current HEAD short sha of "location/<repo>.git" is known as "<expected-sha>"
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/location/<repo>.git", "image": { "registry": "(test registry)" } }
+      { "repository": "<git-url>/location/<repo>.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
-    And the resolved image should be "(test registry)/<repo>:sha-(head:location/<repo>.git)"
+    And the resolved image should be "<registry-url>/<repo>:sha-<expected-sha>"
 
     Examples:
       | repo                       |
@@ -48,7 +71,7 @@ Feature: devcontainer.json discovery after clone
     # used - it's not a naming mismatch, the location itself isn't checked.
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/location/<repo>.git", "image": { "registry": "(test registry)" } }
+      { "repository": "<git-url>/location/<repo>.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "exited with code 1"
@@ -72,7 +95,7 @@ Feature: devcontainer.json discovery after clone
     # `noConfig: true`), proving this failure mode is reachable at all.
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/location/devcontainer-json-missing.git", "image": { "registry": "(test registry)" } }
+      { "repository": "<git-url>/location/devcontainer-json-missing.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "exited with code 1"

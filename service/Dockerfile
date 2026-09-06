@@ -33,4 +33,4 @@ COPY --from=build --chown=builder:builder /app/package.json ./package.json
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["node", "dist/server.js"]
+ENTRYPOINT ["node", "dist/server.js"]

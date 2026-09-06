@@ -4,6 +4,7 @@ export class DevcontainerBuilderWorld extends World {
   constructor(options) {
     super(options);
     this.envOverrides = {};
+    this.cliArgs = [];
     this.namedFiles = {};
     this.tempDirs = [];
     this.serverProcess = undefined;

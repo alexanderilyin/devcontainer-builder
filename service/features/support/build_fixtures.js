@@ -16,28 +16,73 @@ const gitServerChartPath = path.join(repoRoot, "charts", "test-git-server");
 
 const NAMESPACE = getTestNamespace(repoRoot);
 
-const REGISTRY_RELEASE = "test-registry";
-const AUTHED_REGISTRY_RELEASE = "test-registry-authed";
-const BUILDKIT_RELEASE = "test-buildkit";
-const GIT_SERVER_RELEASE = "test-git-server";
-
 // Fullname pattern matches every chart's `{{ .Release.Name }}-{{ .Chart.Name }}`
 // helper (see charts/test-*/templates/_helpers.tpl), and the external
 // buildkit-service chart's own Service naming (`<release>-buildkit-service`).
-export const REGISTRY_HOST = `${REGISTRY_RELEASE}-test-registry.${NAMESPACE}.svc.cluster.local:5000`;
+// Deliberately `let`, not `const`, and uninitialized until
+// `registerFixtureReleases()` runs (see "Given the following fixture
+// releases are registered:" in fixture.steps.js) - the release-name
+// identifiers themselves are now a Gherkin fact, not a hardcoded literal.
+// ESM export bindings are live references, so every consumer here that
+// already just reads REGISTRY_HOST/GIT_FIXTURE_HOST/etc. by name
+// (ensureXFixtureDeployed, getFixtureHeadShortSha, getGitFixtureTls,
+// common.steps.js's "... URL is known as ..." steps) keeps working
+// completely unchanged - they're reading the same binding, it's just
+// genuinely set from a scenario now instead of computed once at module
+// load from a constant nobody could see.
+export let REGISTRY_HOST;
 // Requires HTTP basic auth (htpasswd) - the one fixture registry that can
 // actually distinguish "right credentials" from "wrong/no credentials",
 // which the plain anonymous REGISTRY_HOST can't (it accepts any push).
-export const AUTHED_REGISTRY_HOST = `${AUTHED_REGISTRY_RELEASE}-test-registry.${NAMESPACE}.svc.cluster.local:5000`;
-export const AUTHED_REGISTRY_USERNAME = "svc-bot";
-export const AUTHED_REGISTRY_PASSWORD = "hunter2";
-export const TEST_BUILDKIT_ENDPOINT = `tcp://${BUILDKIT_RELEASE}-buildkit-service.${NAMESPACE}.svc.cluster.local:1234`;
+// Username/password are supplied by whoever deploys this fixture (see
+// "the test-registry-authed fixture is deployed with username ... and
+// password ..." in fixture.steps.js) - the Gherkin text is the source of
+// truth for these, not a constant hidden here.
+export let AUTHED_REGISTRY_HOST;
+export let TEST_BUILDKIT_ENDPOINT;
 // Base host only - callers append `:9418/<path>` for git-daemon,
-// `:8080/<path>` for smart HTTP, `:443/<path>` (via fixture_sentinels.js's
-// "(git fixture https)") for real TLS, or `ssh://git@<host>/<path>` (via
-// "(git fixture ssh)") for real SSH - all four share the same `/<path>`
-// convention with no protocol-specific prefix.
-export const GIT_FIXTURE_HOST = `${GIT_SERVER_RELEASE}-test-git-server.${NAMESPACE}.svc.cluster.local`;
+// `:8080/<path>` for smart HTTP, `:443/<path>` for real TLS, or
+// `ssh://git@<host>/<path>` for real SSH - all four share the same
+// `/<path>` convention with no protocol-specific prefix (see
+// common.steps.js's "the test-git-server fixture's ... URL is known as
+// ..." steps, which build each of these four forms).
+export let GIT_FIXTURE_HOST;
+
+let releaseNames;
+
+// Only computes a host for a release that was actually provided - a file
+// that only needs 3 of the 4 fixtures (per the existing per-file audit)
+// omits that row from its table, and a template literal would otherwise
+// silently stringify `undefined` into a bogus-but-defined host
+// ("undefined-test-registry...") instead of leaving it genuinely unset.
+// In a combined multi-file run this also means a later file's narrower
+// table can't accidentally clobber an earlier file's still-valid value -
+// it just leaves whatever was already there alone.
+export function registerFixtureReleases(releases) {
+  // Only merge keys the table actually provided - `releases` always has
+  // all 4 keys present (fixture.steps.js builds it from a fixed shape),
+  // but a row this table omits comes through as an *explicit* `undefined`
+  // property, and `{ ...releaseNames, ...releases }` would still copy
+  // that explicit `undefined` over an earlier file's real value in a
+  // combined run. Filtering to defined entries first is what actually
+  // gives the "leaves whatever was already there alone" behavior the
+  // HOST constants below already have via their own `if (releases.x)` guards.
+  const provided = Object.fromEntries(Object.entries(releases).filter(([, value]) => value !== undefined));
+  releaseNames = { ...releaseNames, ...provided };
+  if (releases.registry) REGISTRY_HOST = `${releases.registry}-test-registry.${NAMESPACE}.svc.cluster.local:5000`;
+  if (releases.registryAuthed) AUTHED_REGISTRY_HOST = `${releases.registryAuthed}-test-registry.${NAMESPACE}.svc.cluster.local:5000`;
+  if (releases.buildkit) TEST_BUILDKIT_ENDPOINT = `tcp://${releases.buildkit}-buildkit-service.${NAMESPACE}.svc.cluster.local:1234`;
+  if (releases.gitServer) GIT_FIXTURE_HOST = `${releases.gitServer}-test-git-server.${NAMESPACE}.svc.cluster.local`;
+}
+
+function requireRegisteredReleases() {
+  if (!releaseNames) {
+    throw new Error(
+      'fixture releases not registered - add "Given the following fixture releases are registered:" before this step',
+    );
+  }
+  return releaseNames;
+}
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -228,40 +273,65 @@ function buildkitdToml() {
     .join("");
 }
 
-// Deploys two registries BuildKit will actually push to (anonymous and
-// auth-enforcing), a *separate* disposable BuildKit instance configured to
-// trust both as insecure (the production instance in the `buildkit`
-// namespace has no such config and should never be touched for this), and
-// the real git server (git/http/https/ssh, one authorized SSH key). Install
-// order doesn't matter - none of these are contacted until an actual build
-// request runs.
-export async function installBuildFixtures() {
-  await ensureTestNamespace(NAMESPACE);
-  const [tls, sshKeyPair] = await Promise.all([getGitFixtureTls(), getGitFixtureAuthorizedKeyPair()]);
+// --- Per-chart, idempotent, lazy deployment ------------------------------
+//
+// One memoized function per `test-*` Helm chart, each triggered by its own
+// named "Given the test-* fixture is deployed" step (see fixture.steps.js)
+// instead of one umbrella that always deploys everything - a `.feature`
+// file only pays for (and only declares) the fixtures it actually uses.
+// `??=` means calling one of these twice in a process only deploys once;
+// the exported constants above (REGISTRY_HOST, GIT_FIXTURE_HOST, etc.)
+// resolve to the right DNS name regardless of whether the corresponding
+// fixture has actually been deployed yet in this run - deploying is what
+// makes that name resolve to something real.
 
-  await Promise.all([
-    runHelm(["upgrade", "--install", REGISTRY_RELEASE, registryChartPath, "-n", NAMESPACE, "--wait", "--timeout", "120s"]),
-    runHelm([
+let registryFixture;
+export function ensureRegistryFixtureDeployed() {
+  registryFixture ??= (async () => {
+    const { registry } = requireRegisteredReleases();
+    await ensureTestNamespace(NAMESPACE);
+    await runHelm(["upgrade", "--install", registry, registryChartPath, "-n", NAMESPACE, "--wait", "--timeout", "120s"]);
+    await waitUntilReachable([{ host: REGISTRY_HOST.split(":")[0], port: 5000 }]);
+  })();
+  return registryFixture;
+}
+
+let authedRegistryFixture;
+export function ensureAuthedRegistryFixtureDeployed(username, password) {
+  authedRegistryFixture ??= (async () => {
+    const { registryAuthed } = requireRegisteredReleases();
+    await ensureTestNamespace(NAMESPACE);
+    await runHelm([
       "upgrade",
       "--install",
-      AUTHED_REGISTRY_RELEASE,
+      registryAuthed,
       registryChartPath,
       "-n",
       NAMESPACE,
       "--set",
       "auth.enabled=true",
       "--set",
-      `auth.username=${AUTHED_REGISTRY_USERNAME}`,
+      `auth.username=${username}`,
       "--set",
-      `auth.password=${AUTHED_REGISTRY_PASSWORD}`,
+      `auth.password=${password}`,
       "--wait",
       "--timeout",
       "120s",
-    ]),
-    runHelm([
+    ]);
+    await waitUntilReachable([{ host: AUTHED_REGISTRY_HOST.split(":")[0], port: 5000 }]);
+  })();
+  return authedRegistryFixture;
+}
+
+let buildkitFixture;
+export function ensureBuildkitFixtureDeployed() {
+  buildkitFixture ??= (async () => {
+    const { buildkit } = requireRegisteredReleases();
+    await ensureTestNamespace(NAMESPACE);
+    await runHelm([
       "upgrade",
       "--install",
-      BUILDKIT_RELEASE,
+      buildkit,
       "buildkit-service",
       "--repo",
       "https://andrcuns.github.io/charts",
@@ -272,11 +342,29 @@ export async function installBuildFixtures() {
       "--wait",
       "--timeout",
       "180s",
-    ]),
-    runHelm([
+    ]);
+    const buildkitHost = TEST_BUILDKIT_ENDPOINT.replace("tcp://", "").split(":")[0];
+    await waitUntilReachable([{ host: buildkitHost, port: 1234 }]);
+  })();
+  return buildkitFixture;
+}
+
+let gitServerFixture;
+// `ports` is the literal list of port numbers from the calling Given
+// step's data table - every caller declares the same full git/http/https/
+// ssh set (what the fixture actually is), not just the protocol that
+// caller's own scenarios happen to exercise. That matters because this is
+// memoized process-wide: a narrower first caller would otherwise leave a
+// later caller's port never actually confirmed reachable.
+export function ensureGitServerFixtureDeployed(ports) {
+  gitServerFixture ??= (async () => {
+    const { gitServer } = requireRegisteredReleases();
+    await ensureTestNamespace(NAMESPACE);
+    const [tls, sshKeyPair] = await Promise.all([getGitFixtureTls(), getGitFixtureAuthorizedKeyPair()]);
+    await runHelm([
       "upgrade",
       "--install",
-      GIT_SERVER_RELEASE,
+      gitServer,
       gitServerChartPath,
       "-n",
       NAMESPACE,
@@ -289,34 +377,43 @@ export async function installBuildFixtures() {
       "--wait",
       "--timeout",
       "180s",
-    ]),
-  ]);
-
-  const buildkitHost = TEST_BUILDKIT_ENDPOINT.replace("tcp://", "");
-  await waitUntilReachable([
-    { host: REGISTRY_HOST.split(":")[0], port: 5000 },
-    { host: AUTHED_REGISTRY_HOST.split(":")[0], port: 5000 },
-    { host: buildkitHost.split(":")[0], port: 1234 },
-    { host: GIT_FIXTURE_HOST, port: 9418 },
-    { host: GIT_FIXTURE_HOST, port: 8080 },
-    { host: GIT_FIXTURE_HOST, port: 443 },
-    { host: GIT_FIXTURE_HOST, port: 22 },
-  ]);
-  // A bare TCP connect on 22 can succeed slightly before sshd is fully
-  // ready to speak the SSH protocol - confirm a real ssh-keyscan succeeds
-  // too before declaring fixtures ready, since scenarios rely on real SSH
-  // clones/ssh-keyscan immediately.
-  await getFixtureHostKeyLine();
+    ]);
+    await waitUntilReachable(ports.map((port) => ({ host: GIT_FIXTURE_HOST, port })));
+    // A bare TCP connect on 22 can succeed slightly before sshd is fully
+    // ready to speak the SSH protocol - confirm a real ssh-keyscan succeeds
+    // too before declaring the fixture ready, since scenarios rely on real
+    // SSH clones/ssh-keyscan immediately.
+    if (ports.includes(22)) {
+      await getFixtureHostKeyLine();
+    }
+  })();
+  return gitServerFixture;
 }
 
+// Tears down only whichever of the 4 fixtures actually got deployed in
+// this process (tracked by which memoized promise above got set) - not
+// unconditionally all 4, since a given run may have only needed some.
 export async function uninstallBuildFixtures() {
-  const releases = [REGISTRY_RELEASE, AUTHED_REGISTRY_RELEASE, BUILDKIT_RELEASE, GIT_SERVER_RELEASE];
+  // Optional chaining, not a bare `releaseNames.x`: a deploy attempt can
+  // fail *after* its memoized promise slot is set (a rejected promise is
+  // still a truthy value) but *before* registerFixtureReleases ever ran -
+  // e.g. a scenario missing "Given the following fixture releases are
+  // registered:" entirely. Teardown must stay best-effort even then, not
+  // itself throw and mask the real failure.
+  const releases = [];
+  if (registryFixture) releases.push(releaseNames?.registry);
+  if (authedRegistryFixture) releases.push(releaseNames?.registryAuthed);
+  if (buildkitFixture) releases.push(releaseNames?.buildkit);
+  if (gitServerFixture) releases.push(releaseNames?.gitServer);
+
   await Promise.all(
-    releases.map((release) =>
-      runHelm(["uninstall", release, "-n", NAMESPACE, "--wait", "--timeout", "60s"]).catch(() => {
-        // Best-effort cleanup - don't fail an otherwise-green test run
-        // because teardown of a disposable fixture had trouble.
-      }),
-    ),
+    releases
+      .filter(Boolean)
+      .map((release) =>
+        runHelm(["uninstall", release, "-n", NAMESPACE, "--wait", "--timeout", "60s"]).catch(() => {
+          // Best-effort cleanup - don't fail an otherwise-green test run
+          // because teardown of a disposable fixture had trouble.
+        }),
+      ),
   );
 }

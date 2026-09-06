@@ -17,8 +17,35 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   process exits.
 
   Background:
-    Given the devcontainer-builder service is configured with:
-      | BUILDKIT_ENDPOINT | (test buildkit) |
+    # The buildkit fixture's trust config always needs both registry
+    # hosts, even though this file never itself pushes to the authed one -
+    # its deploy is memoized process-wide, so whichever file's Background
+    # happens to trigger it first must have the complete picture, not just
+    # what that one file personally uses.
+    Given the following fixture releases are registered:
+      | fixture              | release              |
+      | test-registry        | test-registry        |
+      | test-registry-authed | test-registry-authed |
+      | test-buildkit        | test-buildkit         |
+      | test-git-server      | test-git-server       |
+    And the test-registry fixture is deployed
+    And the test-buildkit fixture is deployed, trusting test-registry and test-registry-authed as insecure registries
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And a fresh, never-authorized SSH private key named "<unauthorized-key>"
+    And the test-git-server fixture's real authorized SSH private key named "<authorized-key>"
+    And the test-registry fixture's URL is known as "<registry-url>"
+    And the test-buildkit fixture's endpoint is known as "<buildkit-endpoint>"
+    And the test-git-server fixture's bare host is known as "<git-host>"
+    And the test-git-server fixture's git protocol URL is known as "<git-url>"
+    And the test-git-server fixture's http URL is known as "<http-url>"
+    And the test-git-server fixture's ssh URL is known as "<ssh-url>"
+    And the devcontainer-builder service is configured with:
+      | BUILDKIT_ENDPOINT | <buildkit-endpoint> |
 
   @client-request
   Scenario Outline: No credentials resolve anywhere - the given URL is cloned verbatim
@@ -26,17 +53,17 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "<repository>", "image": { "registry": "(test registry)" } }
+      { "repository": "<repository>", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be <status>
     And the response body should contain "<expect>"
 
     Examples:
       | repository                                                    | status | expect               |
-      | (git fixture git)/example/example-devcontainer.git            | 200    | example-devcontainer |
-      | (git fixture http)/example/example-devcontainer.git           | 200    | example-devcontainer |
-      | git@(git fixture host):example/example-devcontainer.git       | 500    | git clone            |
-      | (git fixture ssh)/example/example-devcontainer.git            | 500    | git clone            |
+      | <git-url>/example/example-devcontainer.git            | 200    | example-devcontainer |
+      | <http-url>/example/example-devcontainer.git           | 200    | example-devcontainer |
+      | git@<git-host>:example/example-devcontainer.git       | 500    | git clone            |
+      | <ssh-url>/example/example-devcontainer.git            | 500    | git clone            |
 
   @negative @client-request
   Scenario: An unparseable repository URL is rejected
@@ -44,7 +71,7 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "not a git url at all", "image": { "registry": "(test registry)" } }
+      { "repository": "not a git url at all", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 400
     And the response body should include:
@@ -55,13 +82,14 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @client-request
   Scenario: Request-level gitCredentials rewrite an SCP-style URL to HTTPS
     Given the server has no git credentials configured
+    And the devcontainer-builder service trusts the test-git-server fixture's TLS certificate authority
     And the service is running
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "git@(git fixture host):example/example-devcontainer.git",
+        "repository": "git@<git-host>:example/example-devcontainer.git",
         "gitCredentials": { "username": "svc-bot", "token": "ghp_example" },
-        "image": { "registry": "(test registry)" }
+        "image": { "registry": "<registry-url>" }
       }
       """
     Then the response status should be 200
@@ -71,11 +99,12 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   Scenario: A server-configured HTTPS credential is used when the request supplies none
     Given the server's git credentials are:
       | host               | kind  | username | token       |
-      | (git fixture host) | https | svc-bot  | ghp_example |
+      | <git-host> | https | svc-bot  | ghp_example |
+    And the devcontainer-builder service trusts the test-git-server fixture's TLS certificate authority
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "<git-url>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
     And the response body should contain "example-devcontainer"
@@ -83,14 +112,14 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @server-config
   Scenario: A server-configured SSH credential rewrites an HTTPS request URL to SSH
     Given the server's git credentials are:
-      | host          | kind | privateKey                  | pinnedHostKey |
-      | (ssh fixture) | ssh  | (an authorized private key) | (unset)       |
+      | host          | kind | privateKey     | pinnedHostKey |
+      | <git-host> | ssh  | <authorized-key> | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "https://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "https://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
     And the response body should contain "example-devcontainer"
@@ -98,20 +127,21 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @server-config @client-request
   Scenario: Request-level gitCredentials win over a server-configured SSH default for the same host
     # If this regressed (server SSH wrongly won), the clone would instead
-    # try ssh://(git fixture host)/... using the deliberately unauthorized
+    # try ssh://<git-host>/... using the deliberately unauthorized
     # key below - a real, fast, clean "Permission denied" failure (not a
     # hang or timeout, since the SSH fixture genuinely listens and
     # responds), cleanly distinguishable from the 200 expected here.
     Given the server's git credentials are:
-      | host               | kind | privateKey            | pinnedHostKey |
-      | (git fixture host) | ssh  | (a valid private key) | (unset)       |
+      | host               | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
+    And the devcontainer-builder service trusts the test-git-server fixture's TLS certificate authority
     And the service is running
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "https://(git fixture host)/example/example-devcontainer.git",
+        "repository": "https://<git-host>/example/example-devcontainer.git",
         "gitCredentials": { "username": "svc-bot", "token": "ghp_example" },
-        "image": { "registry": "(test registry)" }
+        "image": { "registry": "<registry-url>" }
       }
       """
     Then the response status should be 200
@@ -124,18 +154,19 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     # alone, with no dependency on any second real server.
     Given the server's git credentials are:
       | host               | kind  | username  | token         |
-      | (git fixture host) | https | svc-bot   | ghp_example   |
+      | <git-host> | https | svc-bot   | ghp_example   |
       | git.invalid        | https | other-bot | glpat_example |
+    And the devcontainer-builder service trusts the test-git-server fixture's TLS certificate authority
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "git@(git fixture host):example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "git@<git-host>:example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
     And the response body should contain "example-devcontainer"
     When I send a POST request to "/build" with body:
       """
-      { "repository": "git@git.invalid:example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "git@git.invalid:example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the service logs should contain "Could not resolve host: git.invalid"
@@ -148,21 +179,21 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "(git fixture git)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "<git-url>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
 
   @server-config
   Scenario: TOFU host key policy trusts the fixture's host key and proceeds to authentication
     Given the server's git credentials are:
-      | host          | kind | privateKey            | pinnedHostKey |
-      | (ssh fixture) | ssh  | (a valid private key) | (unset)       |
+      | host          | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "ssh://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "git clone"
@@ -170,15 +201,16 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
 
   @server-config
   Scenario: Pinned host key policy uses the configured pin without needing a scan
-    Given the server's git credentials are:
-      | host          | kind | privateKey            | pinnedHostKey           |
-      | (ssh fixture) | ssh  | (a valid private key) | (ssh fixture host key)  |
+    Given the test-git-server fixture's real current SSH host key named "<current-host-key>"
+    And the server's git credentials are:
+      | host          | kind | privateKey       | pinnedHostKey    |
+      | <git-host> | ssh  | <unauthorized-key> | <current-host-key> |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "ssh://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "git clone"
@@ -187,14 +219,14 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
   @negative @server-config
   Scenario: Pinned host key policy without a configured pin fails closed
     Given the server's git credentials are:
-      | host          | kind | privateKey            | pinnedHostKey |
-      | (ssh fixture) | ssh  | (a valid private key) | (unset)       |
+      | host          | kind | privateKey       | pinnedHostKey |
+      | <git-host> | ssh  | <unauthorized-key> | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "ssh://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 400
     And the response body should contain "no pinned key configured for host"
@@ -208,34 +240,36 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     # deliberate there (isolates host-key behavior from auth); this one
     # swaps in the real authorized key specifically to prove "pinned" can
     # carry a request all the way through, not just fail predictably.
-    Given the server's git credentials are:
-      | host          | kind | privateKey                  | pinnedHostKey          |
-      | (ssh fixture) | ssh  | (an authorized private key) | (ssh fixture host key) |
+    Given the test-git-server fixture's real current SSH host key named "<current-host-key>"
+    And the server's git credentials are:
+      | host          | kind | privateKey     | pinnedHostKey    |
+      | <git-host> | ssh  | <authorized-key> | <current-host-key> |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "ssh://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 200
     And the response body should contain "example-devcontainer"
 
   @negative @server-config
   Scenario: Pinned host key policy rejects a stale or incorrect pin
-    # "(wrong ssh fixture host key)" is a real, syntactically valid
-    # known_hosts line for this host - just from an unrelated keypair - so
-    # this is a genuine host-key mismatch (the actual security case
-    # "pinned" exists for), not a parse error standing in for one.
-    Given the server's git credentials are:
-      | host          | kind | privateKey                  | pinnedHostKey                |
-      | (ssh fixture) | ssh  | (an authorized private key) | (wrong ssh fixture host key) |
+    # "<wrong-host-key>" is a real, syntactically valid known_hosts line for
+    # this host - just from an unrelated keypair - so this is a genuine
+    # host-key mismatch (the actual security case "pinned" exists for),
+    # not a parse error standing in for one.
+    Given a stale, non-matching SSH host key for the test-git-server fixture named "<wrong-host-key>"
+    And the server's git credentials are:
+      | host          | kind | privateKey     | pinnedHostKey  |
+      | <git-host> | ssh  | <authorized-key> | <wrong-host-key> |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | pinned |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "ssh://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "git clone"
@@ -248,13 +282,13 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     # once a request actually tries to use it.
     Given the server's git credentials are:
       | host          | kind | privateKey                             | pinnedHostKey |
-      | (ssh fixture) | ssh  | this is not a real private key at all  | (unset)       |
+      | <git-host> | ssh  | this is not a real private key at all  | (unset)       |
     And the devcontainer-builder service is configured with:
       | SSH_HOST_KEY_POLICY | tofu |
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "ssh://(ssh fixture)/example/example-devcontainer.git", "image": { "registry": "(test registry)" } }
+      { "repository": "ssh://<git-host>/example/example-devcontainer.git", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "git clone"
@@ -266,12 +300,12 @@ Feature: Git source resolution - URL parsing, credential precedence, and protoco
     And the service is running
     When I send a POST request to "/build" with body:
       """
-      { "repository": "<repository>", "image": { "registry": "(test registry)" } }
+      { "repository": "<repository>", "image": { "registry": "<registry-url>" } }
       """
     Then the response status should be 500
     And the response body should contain "git clone"
 
     Examples:
       | repository                                            |
-      | (git fixture git)/example/nonexistent-repo.git         |
-      | (git fixture http)/example/nonexistent-repo.git        |
+      | <git-url>/example/nonexistent-repo.git         |
+      | <http-url>/example/nonexistent-repo.git        |

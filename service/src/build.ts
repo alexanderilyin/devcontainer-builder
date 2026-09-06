@@ -5,10 +5,7 @@ import { join } from "node:path";
 import type { BuildRequest, RegistryCredentials } from "./types.js";
 import { loadServiceConfig, type GitCredentialEntry, type RegistryMappingRule, type SshHostKeyPolicy } from "./config.js";
 
-const BUILDKIT_ENDPOINT = process.env.BUILDKIT_ENDPOINT;
-const BUILDX_BUILDER_NAME = process.env.BUILDX_BUILDER_NAME ?? "devcontainer-builder-remote";
-
-const serviceConfig = loadServiceConfig();
+export const serviceConfig = loadServiceConfig();
 
 // Thrown for user-fixable request problems discovered mid-build (can't be
 // caught by server.ts's up-front shape validation alone, e.g. no registry
@@ -17,7 +14,7 @@ const serviceConfig = loadServiceConfig();
 export class BuildRequestError extends Error {}
 
 export function isReady(): { ready: boolean; reason?: string } {
-  if (!BUILDKIT_ENDPOINT) {
+  if (!serviceConfig.buildkitEndpoint) {
     return { ready: false, reason: "BUILDKIT_ENDPOINT not configured" };
   }
   return { ready: true };
@@ -64,21 +61,21 @@ function runCapture(
 // point this at a scratch DOCKER_CONFIG (see withRegistryAuthEnv) while
 // still finding the builder state copied into that scratch dir.
 async function ensureRemoteBuilder(env: NodeJS.ProcessEnv = process.env): Promise<void> {
-  if (!BUILDKIT_ENDPOINT) {
+  if (!serviceConfig.buildkitEndpoint) {
     throw new Error("BUILDKIT_ENDPOINT is not configured");
   }
 
   try {
-    await run("docker", ["buildx", "inspect", BUILDX_BUILDER_NAME], env);
+    await run("docker", ["buildx", "inspect", serviceConfig.buildxBuilderName], env);
   } catch {
     await run(
       "docker",
-      ["buildx", "create", "--name", BUILDX_BUILDER_NAME, "--driver", "remote", BUILDKIT_ENDPOINT],
+      ["buildx", "create", "--name", serviceConfig.buildxBuilderName, "--driver", "remote", serviceConfig.buildkitEndpoint],
       env,
     );
   }
 
-  await run("docker", ["buildx", "use", BUILDX_BUILDER_NAME], env);
+  await run("docker", ["buildx", "use", serviceConfig.buildxBuilderName], env);
 }
 
 // Git credentials go into a scratch `.netrc` (never argv or the remote URL)

@@ -11,8 +11,27 @@ Feature: Registry push authentication
   disposable BuildKit instance does the actual push in every scenario.
 
   Background:
-    Given the devcontainer-builder service is configured with:
-      | BUILDKIT_ENDPOINT | (test buildkit) |
+    Given the following fixture releases are registered:
+      | fixture              | release              |
+      | test-registry        | test-registry        |
+      | test-registry-authed | test-registry-authed |
+      | test-buildkit        | test-buildkit         |
+      | test-git-server      | test-git-server       |
+    And the test-registry fixture is deployed
+    And the test-registry-authed fixture is deployed with username "svc-bot" and password "hunter2"
+    And the test-buildkit fixture is deployed, trusting test-registry and test-registry-authed as insecure registries
+    And the test-git-server fixture is deployed, serving:
+      | protocol | port |
+      | git      | 9418 |
+      | http     | 8080 |
+      | https    | 443  |
+      | ssh      | 22   |
+    And the test-registry fixture's URL is known as "<registry-url>"
+    And the test-registry-authed fixture's URL is known as "<authed-registry-url>"
+    And the test-buildkit fixture's endpoint is known as "<buildkit-endpoint>"
+    And the test-git-server fixture's git protocol URL is known as "<git-url>"
+    And the devcontainer-builder service is configured with:
+      | BUILDKIT_ENDPOINT | <buildkit-endpoint> |
     And the server has no git credentials configured
     And the server's registry mapping rules are empty
 
@@ -22,21 +41,21 @@ Feature: Registry push authentication
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(test registry)" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<registry-url>" }
       }
       """
     Then the response status should be 200
 
   @client-request
   Scenario: Correct ambient registry auth succeeds against an auth-enforcing registry
-    Given the ambient registry auth is configured for "(authed registry)" with username "svc-bot" and password "hunter2"
+    Given the ambient registry auth is configured for "<authed-registry-url>" with username "svc-bot" and password "hunter2"
     And the service is running
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(authed registry)" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<authed-registry-url>" }
       }
       """
     Then the response status should be 200
@@ -48,8 +67,8 @@ Feature: Registry push authentication
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(authed registry)" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<authed-registry-url>" }
       }
       """
     Then the response status should be 500
@@ -62,9 +81,9 @@ Feature: Registry push authentication
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(authed registry)" },
-        "registryCredentials": { "registry": "(authed registry)", "username": "svc-bot", "password": "hunter2" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<authed-registry-url>" },
+        "registryCredentials": { "registry": "<authed-registry-url>", "username": "svc-bot", "password": "hunter2" }
       }
       """
     Then the response status should be 200
@@ -76,9 +95,9 @@ Feature: Registry push authentication
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(authed registry)" },
-        "registryCredentials": { "registry": "(authed registry)", "username": "svc-bot", "password": "wrong-password" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<authed-registry-url>" },
+        "registryCredentials": { "registry": "<authed-registry-url>", "username": "svc-bot", "password": "wrong-password" }
       }
       """
     Then the response status should be 500
@@ -91,9 +110,9 @@ Feature: Registry push authentication
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(authed registry)" },
-        "registryCredentials": { "registry": "(test registry)", "username": "svc-bot", "password": "hunter2" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<authed-registry-url>" },
+        "registryCredentials": { "registry": "<registry-url>", "username": "svc-bot", "password": "hunter2" }
       }
       """
     Then the response status should be 500
@@ -110,17 +129,17 @@ Feature: Registry push authentication
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(authed registry)" },
-        "registryCredentials": { "registry": "(authed registry)", "username": "svc-bot", "password": "hunter2" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<authed-registry-url>" },
+        "registryCredentials": { "registry": "<authed-registry-url>", "username": "svc-bot", "password": "hunter2" }
       }
       """
     Then the response status should be 200
     When I send a POST request to "/build" with body:
       """
       {
-        "repository": "(git fixture git)/example/example-devcontainer.git",
-        "image": { "registry": "(test registry)" }
+        "repository": "<git-url>/example/example-devcontainer.git",
+        "image": { "registry": "<registry-url>" }
       }
       """
     Then the response status should be 200

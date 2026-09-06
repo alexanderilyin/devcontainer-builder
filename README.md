@@ -34,6 +34,23 @@ out to Kubernetes to provision a PersistentVolumeClaim before the pod.
     `.devcontainer.json` and manual-mode bootstrap scripts so this repo can be
     developed from a Dev Container (or a plain pod, until Dev Containers are
     wired up in this Coder/K8s setup).
+  - [002-service](docs/claude/plans/002-service.md) - hybrid git/registry
+    credential resolution, HTTPS/SSH protocol conversion, and registry
+    auto-resolution for the service.
+- [`docs/claude/notes/`](docs/claude/notes) - findings and deferred
+  infrastructure work that isn't a pre-change plan for a specific PR.
+  - [registry-pull-through-cache](docs/claude/notes/registry-pull-through-cache.md) -
+    Docker Hub anonymous rate-limiting hit during BDD testing, the immediate
+    fixture-level mitigation, and a deferred pull-through cache idea.
+  - [fixture-startup-installs](docs/claude/notes/fixture-startup-installs.md) -
+    why `test-git-server`'s pods show transient `Unhealthy` readiness-probe
+    events on every fresh start (installing packages at container startup
+    instead of a pre-built image), and the deferred fix.
+- [`.agents/skills/`](.agents/skills) - reusable [Agent
+  Skills](https://www.skills.sh/) distilling hard-won gotchas from building
+  this repo's Helm charts, BuildKit/buildx usage, git protocol test
+  fixtures, and disposable-Kubernetes-test-fixture pattern - loaded
+  automatically by tools that support the convention.
 
 ## Status
 

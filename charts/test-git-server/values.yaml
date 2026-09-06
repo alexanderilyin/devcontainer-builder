@@ -1,0 +1,50 @@
+replicaCount: 1
+
+images:
+  git: alpine/git:latest
+  alpine: alpine:latest
+  python: python:3-slim
+
+# Each entry becomes a bare repo at /repos/<path>, seeded (via initContainer)
+# with a single commit on `main` containing devcontainerJson as
+# `.devcontainer.json`. Keep devcontainerJson minimal - it's the payload the
+# service-under-test actually builds, not something this fixture cares
+# about beyond "a valid devcontainer.json".
+#
+# Base image is deliberately mcr.microsoft.com, not docker.io/library/alpine:
+# Docker Hub's anonymous pull rate limit is real and gets hit hard by BDD
+# runs that do many real builds against the same base image from one
+# cluster egress IP (confirmed: HTTP 429 TOOMANYREQUESTS from
+# registry-1.docker.io during testing). MCR has no comparable limit.
+seedRepos:
+  - name: example-devcontainer
+    path: example/example-devcontainer.git
+    devcontainerJson: |
+      { "image": "mcr.microsoft.com/devcontainers/base:alpine-3.20" }
+    # A real, distinct, clone-able branch for end_to_end_build.feature's
+    # explicit-branch scenario - same content as main, just a separate
+    # empty commit on top so it's a genuine branch to check out by name.
+    extraBranches: [release]
+  # Extra paths for image_resolution.feature's name-derivation checks
+  # (nested path, no .git suffix, top-level bare repo) - same minimal
+  # payload, only the path shape differs.
+  - name: sub-example-devcontainer
+    path: example/sub/example-devcontainer
+    devcontainerJson: |
+      { "image": "mcr.microsoft.com/devcontainers/base:alpine-3.20" }
+  - name: solo-repo
+    path: solo-repo.git
+    devcontainerJson: |
+      { "image": "mcr.microsoft.com/devcontainers/base:alpine-3.20" }
+
+service:
+  gitPort: 9418
+  httpPort: 8080
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 250m
+    memory: 256Mi

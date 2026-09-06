@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Installs the CLI tools the base devcontainer image doesn't already provide:
-# Helm, Terraform, kubectl, k9s, and the `helm tui` plugin. No Dev Container
+# Helm, Terraform, kubectl, k9s, Docker CLI + buildx plugin + devcontainers
+# CLI, and the `helm tui` plugin. No Dev Container
 # Features are used here (they aren't usable yet in this repo's Coder/K8s
 # setup) - everything goes through plain shell so this script also works
 # when invoked manually via install.sh at the repo root.
@@ -42,6 +43,27 @@ if ! command -v terraform >/dev/null 2>&1; then
   $SUDO apt-get install -y --no-install-recommends terraform
 fi
 
+# --- Docker CLI + buildx plugin + devcontainers CLI (same apt repo and
+#     `npm install -g @devcontainers/cli` as service/Dockerfile - this is
+#     for developing/testing builds against the remote BuildKit endpoint
+#     from the workspace, not for running containers locally: no dockerd
+#     here either) --------------------------------------------------------
+if ! command -v docker >/dev/null 2>&1; then
+  echo "Installing docker-ce-cli + docker-buildx-plugin..."
+  $SUDO install -m 0755 -d /etc/apt/keyrings
+  curl -fsSL https://download.docker.com/linux/debian/gpg | $SUDO gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  $SUDO chmod a+r /etc/apt/keyrings/docker.gpg
+  echo "deb [arch=${arch} signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+    | $SUDO tee /etc/apt/sources.list.d/docker.list > /dev/null
+  $SUDO apt-get update
+  $SUDO apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin
+fi
+
+if ! command -v devcontainer >/dev/null 2>&1; then
+  echo "Installing @devcontainers/cli..."
+  npm install -g @devcontainers/cli
+fi
+
 # --- kubectl --------------------------------------------------------------
 if ! command -v kubectl >/dev/null 2>&1; then
   echo "Installing kubectl..."
@@ -73,4 +95,4 @@ if command -v helm >/dev/null 2>&1 && ! helm plugin list 2>/dev/null | grep -qw 
   helm plugin install https://github.com/pidanou/helm-tui
 fi
 
-echo "postCreateCommand.sh done: helm, terraform, kubectl, k9s, helm tui plugin ready."
+echo "postCreateCommand.sh done: helm, terraform, kubectl, k9s, docker cli, devcontainers cli, helm tui plugin ready."

@@ -16,3 +16,11 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{ include "devcontainer-builder.fullname" . }}-registry-auth
 {{- end -}}
 {{- end -}}
+
+{{- define "devcontainer-builder.gitCredentialsSecretName" -}}
+{{- if .Values.gitCredentials.existingSecret -}}
+{{ .Values.gitCredentials.existingSecret }}
+{{- else -}}
+{{ include "devcontainer-builder.fullname" . }}-git-credentials
+{{- end -}}
+{{- end -}}

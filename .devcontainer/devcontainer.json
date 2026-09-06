@@ -5,7 +5,11 @@
   "postCreateCommand": "bash .devcontainer/postCreateCommand.sh",
   "customizations": {
     "vscode": {
-      "extensions": ["hashicorp.terraform", "redhat.vscode-yaml"]
+      "extensions": [
+        "hashicorp.terraform",
+        "redhat.vscode-yaml",
+        "alexkrechik.cucumberautocomplete"
+      ]
     }
   }
 }

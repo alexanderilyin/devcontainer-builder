@@ -1,0 +1,11 @@
+apiVersion: v2
+name: test-openssh-server
+description: >-
+  Minimal OpenSSH server test fixture. Deploys a single sshd pod for BDD
+  scenarios that need a real SSH host to talk to (ssh-keyscan, SSH host-key
+  verification) instead of faking the SSH protocol. Not a production chart -
+  no persistence, no login credentials configured, host key regenerates on
+  every restart.
+type: application
+version: 0.1.0
+appVersion: "latest"

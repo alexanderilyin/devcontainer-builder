@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "test-git-server.fullname" . }}
+  labels:
+    {{- include "test-git-server.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "test-git-server.labels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "test-git-server.labels" . | nindent 8 }}
+      annotations:
+        # Kubernetes does NOT restart pods when only a referenced
+        # ConfigMap's data changes - the pod template itself is unchanged,
+        # so `helm upgrade` (even with --wait) silently no-ops on the
+        # running pod, leaving its emptyDir seeded from whatever the
+        # ConfigMap held at the pod's *original* creation time. This
+        # annotation's value changes whenever the seed ConfigMap's rendered
+        # content changes, which does change the pod template and forces a
+        # real rollout - the standard Helm idiom for this.
+        checksum/seed-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      initContainers:
+        - name: seed-repos
+          image: "{{ .Values.images.git }}"
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              {{- range .Values.seedRepos }}
+              {{- $repo := . }}
+              mkdir -p "/work/{{ .name }}"
+              cp "/seed/{{ .name }}.json" "/work/{{ .name }}/.devcontainer.json"
+              git -C "/work/{{ .name }}" init -q
+              git -C "/work/{{ .name }}" -c user.email=test@test -c user.name=test add -A
+              git -C "/work/{{ .name }}" -c user.email=test@test -c user.name=test commit -q -m seed
+              mkdir -p "/repos/$(dirname "{{ .path }}")"
+              git init -q --bare --initial-branch=main "/repos/{{ .path }}"
+              git -C "/work/{{ .name }}" push -q "/repos/{{ .path }}" HEAD:main
+              {{- range .extraBranches }}
+              git -C "/work/{{ $repo.name }}" -c user.email=test@test -c user.name=test commit -q --allow-empty -m "extra branch {{ . }}"
+              git -C "/work/{{ $repo.name }}" push -q "/repos/{{ $repo.path }}" HEAD:{{ . }}
+              {{- end }}
+              {{- end }}
+          volumeMounts:
+            - name: repos
+              mountPath: /repos
+            - name: seed
+              mountPath: /seed
+      containers:
+        - name: git-daemon
+          # Plain alpine, not alpine/git: Alpine's base `git` apk package
+          # does not include the git-daemon binary (`git daemon` dispatches
+          # to it) - it ships in a separate `git-daemon` package, so it's
+          # installed explicitly at startup here, same pattern as git-http
+          # installing git via apt at startup.
+          #
+          # TRADEOFF: installing at startup (here and in git-http below)
+          # means every fresh pod spends real time - `apk add`/`apt-get
+          # install` over the network - before its readiness probe can pass,
+          # which shows up as transient "Unhealthy: connection refused"
+          # events (harmless, `helm --wait` correctly waits through it, but
+          # can take 10-30s+ for git-http's apt install). If startup latency
+          # or probe noise becomes a real problem, the fix is a small
+          # pre-built image (with git/git-daemon already installed) pushed
+          # to a registry, instead of installing on every pod start - this
+          # repo's own test-registry/test-buildkit fixtures could build it.
+          image: "{{ .Values.images.alpine }}"
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              apk add --no-cache git git-daemon
+              exec git daemon --reuseaddr --export-all --base-path=/repos --port={{ .Values.service.gitPort }} /repos
+          ports:
+            - name: git
+              containerPort: {{ .Values.service.gitPort }}
+          volumeMounts:
+            - name: repos
+              mountPath: /repos
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: git
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+        - name: git-http
+          image: "{{ .Values.images.python }}"
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              apt-get update && apt-get install -y --no-install-recommends git
+              mkdir -p /http-root/cgi-bin
+              cat > /http-root/cgi-bin/git-http-backend <<'SCRIPT'
+              #!/bin/sh
+              export GIT_PROJECT_ROOT=/repos
+              export GIT_HTTP_EXPORT_ALL=1
+              # Python's CGIHTTPRequestHandler doesn't carry HOME through to
+              # the CGI subprocess the way a normal shell would, so a
+              # `git config --global` (~/.gitconfig-based) safe.directory
+              # exception set at container startup is invisible here -
+              # override it directly via git's env-var config mechanism
+              # instead, which doesn't depend on HOME/any file at all.
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0=safe.directory
+              export GIT_CONFIG_VALUE_0=*
+              exec git http-backend
+              SCRIPT
+              chmod +x /http-root/cgi-bin/git-http-backend
+              # Dummy TLS-rejecting listener on 443: build.ts always rewrites
+              # an HTTPS-credentialed clone URL to a literal "https://", which
+              # this fixture can never really serve (no cert-manager/real
+              # domain - see docs/claude/notes). Without *something* listening
+              # on 443, a clone attempt against a closed port silently hangs
+              # on this cluster's network (confirmed manually) instead of
+              # failing fast. Any TCP listener here - even one that doesn't
+              # speak TLS - makes git's TLS handshake fail immediately and
+              # distinctively ("GnuTLS, handshake failed: ..."), which is
+              # itself a real, useful, fast signal in tests: reaching that
+              # error at all proves the request got past DNS/routing to
+              # *this* host specifically, i.e. proves the https:// rewrite
+              # happened and pointed at the right target - the code just
+              # can't be shown *succeeding* end-to-end over HTTPS here.
+              python3 -m http.server 443 &
+              cd /http-root
+              exec python3 -m http.server {{ .Values.service.httpPort }} --cgi
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.httpPort }}
+            - name: https-dummy
+              containerPort: 443
+          volumeMounts:
+            - name: repos
+              mountPath: /repos
+              readOnly: true
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 3
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: repos
+          emptyDir: {}
+        - name: seed
+          configMap:
+            name: {{ include "test-git-server.fullname" . }}-seed

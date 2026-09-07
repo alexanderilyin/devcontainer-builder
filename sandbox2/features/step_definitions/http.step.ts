@@ -3,7 +3,7 @@ import { DataTable, Given, Then, When } from '@cucumber/cucumber';
 import { World } from '../support/world.js';
 import { RestEndpoint, restEndpointFromTable } from '../support/http/rest_endpoint.js';
 import { sendHttpRequest } from '../support/http/http_request.js';
-import { captureValueFromResponse } from '../support/http/capture.js';
+import { captureHeaderFromResponse, captureQueryParameterFromResponseHeader, captureValueFromResponse } from '../support/http/capture.js';
 import { attempt } from '../support/attempt.js';
 import { assertCondition } from '../support/assert_condition.js';
 
@@ -36,6 +36,14 @@ function getRestEndpoint(world: World, alias: string): RestEndpoint {
 // as ..." idiom.
 Given('the value at {string} from the last response is known as {string}', function (this: World, jmespath: string, alias: string) {
   captureValueFromResponse(this, jmespath, alias);
+});
+
+Given('the value of response header {string} from the last response is known as {string}', function (this: World, headerName: string, alias: string) {
+  captureHeaderFromResponse(this, headerName, alias);
+});
+
+Given('the query parameter {string} from response header {string} is known as {string}', function (this: World, parameter: string, headerName: string, alias: string) {
+  captureQueryParameterFromResponseHeader(this, headerName, parameter, alias);
 });
 
 // No-table variant for the common case of a request with no headers/

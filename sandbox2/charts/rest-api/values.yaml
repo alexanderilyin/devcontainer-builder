@@ -14,6 +14,9 @@ pipVersions:
   fastapi: "0.141.1"
   uvicorn: "0.52.4"
   pythonMultipart: "0.0.32"
+  bcrypt: "4.3.0"
+  cryptography: "45.0.7"
+  pythonJose: "3.5.0"
 
 service:
   port: 8000

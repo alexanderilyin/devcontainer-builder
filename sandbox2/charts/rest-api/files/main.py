@@ -17,6 +17,9 @@ from fastapi import FastAPI, Response
 
 import files
 import notes
+import oauth
+import secure
+import users
 
 # In-memory only, deliberately - this is a disposable test fixture (same
 # spirit as charts/test-registry's emptyDir storage), not something that
@@ -42,6 +45,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="sandbox2 rest-api test fixture", lifespan=lifespan)
 app.include_router(notes.router)
 app.include_router(files.router)
+app.include_router(users.router)
+app.include_router(oauth.router)
+app.include_router(secure.router)
 
 
 @app.get("/health/startup")

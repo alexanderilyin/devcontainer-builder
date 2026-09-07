@@ -175,15 +175,12 @@ charts/
 - **Phase 1** (health-probe endpoints, `RestEndpoint`/HTTP mechanism,
   `charts/rest-api` skeleton) — shipped, verified.
 - **Phase 2** (`/files/*`, `/notes/*` CRUD, dynamic-value capture,
-  multipart upload, binary-safe response bodies) — implemented; **final
-  full-suite verification was in progress when this file was written —
-  check `git log`/`git status` and actually run `npm test` twice before
-  trusting this line.**
+  multipart upload, binary-safe response bodies) — shipped, verified
+  (66/66 scenarios, twice in a row, cluster confirmed clean both times).
 - **Phase 3** (`/users/*` + 5 real auth methods — ApiKey/Basic/Bearer/
-  self-hosted OAuth2/OIDC) — not started. A roadmap-level design exists;
-  see the plan file this session was working from if it's still present
-  under `~/.claude/plans/`, or re-derive from `.agents/skills/
-  http-rest-testing/` and `fastapi-test-fixture/` — the mechanism
-  already generalizes, Phase 3 is mostly new endpoints + two small,
-  named extensions to the capture mechanism (pull from a response
-  header, not just the body).
+  self-hosted OAuth2/OIDC) — implemented and covered by real scenarios in
+  `features/rest/users.feature` and `features/rest/auth.feature`; rerun the
+  full suite twice before calling it verified. Full plan at
+  `docs/claude/plans/0001-phase3-users-and-auth.md`. Two small,
+  independent, not-yet-closed test-coverage gaps are tracked at
+  `docs/claude/plans/0002-test-coverage-gaps.md`.

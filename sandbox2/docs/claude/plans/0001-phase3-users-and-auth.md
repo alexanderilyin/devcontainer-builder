@@ -1,6 +1,8 @@
 # Phase 3: `/users/*` CRUD + 5 real auth-method endpoints
 
-*(Not started. Phases 1-2 of the rest-api work are shipped and verified
+*(Implementation complete; the focused Phase 3 scenarios and full suite have
+passed against the real cluster. Phases 1-2 of the rest-api work are shipped
+and verified
 - see `sandbox2/AGENTS.md`'s Status section and `.agents/skills/
 http-rest-testing/`, `.agents/skills/fastapi-test-fixture/` for the
 mechanism this builds on. Read both skills before starting this.)*

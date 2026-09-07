@@ -11,7 +11,9 @@
         "alexkrechik.cucumberautocomplete",
         "HashiCorp.terraform",
         "ms-azuretools.vscode-containers",
-        "openai.chatgpt"
+        "openai.chatgpt",
+        "Google.geminicodeassist",
+        "sst-dev.opencode"
       ]
     }
   }

@@ -13,6 +13,32 @@ export function captureValueFromResponse(world: World, jmespath: string, alias: 
   world.capturedValues.set(alias, String(value));
 }
 
+export function captureHeaderFromResponse(world: World, headerName: string, alias: string): void {
+  if (!world.lastHttpResponse) {
+    throw new Error('No HTTP request has been sent yet');
+  }
+  const value = world.lastHttpResponse.headers[headerName.toLowerCase()];
+  if (value === undefined) {
+    throw new Error(`No response header named "${headerName}" was found`);
+  }
+  world.capturedValues.set(alias, value);
+}
+
+export function captureQueryParameterFromResponseHeader(world: World, headerName: string, parameter: string, alias: string): void {
+  if (!world.lastHttpResponse) {
+    throw new Error('No HTTP request has been sent yet');
+  }
+  const headerValue = world.lastHttpResponse.headers[headerName.toLowerCase()];
+  if (headerValue === undefined) {
+    throw new Error(`No response header named "${headerName}" was found`);
+  }
+  const value = new URL(headerValue).searchParams.get(parameter);
+  if (value === null) {
+    throw new Error(`No query parameter named "${parameter}" was found in response header "${headerName}"`);
+  }
+  world.capturedValues.set(alias, value);
+}
+
 // Scoped deliberately to capturedValues only - not merged with
 // resolve_alias.ts's Directory/File/URL/OCIArtifact resolution. Mixing
 // two different "what does <X> mean" systems under one syntax would be

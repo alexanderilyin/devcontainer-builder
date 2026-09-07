@@ -7,7 +7,7 @@ real running application, not just Helm/kubectl-observed state. See
 rationale (why no custom container image, the ConfigMap-mounted-source +
 pip-install-at-startup tradeoff, health-probe design, storage choices).
 
-## Endpoints (current, Phase 2)
+## Endpoints (current, Phase 3)
 
 - `GET /health/startup` / `/health/ready` / `/health/live` - k8s probe
   endpoints. `PUT /_test/ready?ready=<bool>` is a deliberate,
@@ -18,9 +18,18 @@ pip-install-at-startup tradeoff, health-probe design, storage choices).
   `GET {id}` metadata, `GET {id}/download` raw bytes, `DELETE {id}`) -
   real bytes on a writable `/data` `emptyDir` volume.
 
-Not yet implemented (see `sandbox2/claude/plans/` for the plan):
-`/users/*` CRUD and the 5 real auth-method endpoints (ApiKey, Basic,
-Bearer/JWT, self-hosted OAuth2, self-hosted OpenID Connect).
+- `/users/` - in-memory user CRUD with password, API-key, and bearer-token
+  credentials. Generated API keys are returned only on create/rotation.
+- `/auth/api-key/whoami` - `X-API-Key` authentication.
+- `/auth/basic/whoami` - HTTP Basic authentication.
+- `/auth/token` and `/auth/bearer/whoami` - password-backed bearer JWT.
+- `/auth/oauth2/whoami` - OAuth2 access-token validation.
+- `/auth/openid/whoami` - OIDC ID-token validation.
+- `/oauth/authorize`, `/oauth/token`, `/oauth/userinfo`, `/oauth/jwks`, and
+  `/.well-known/openid-configuration` - self-hosted authorization-code and
+  OIDC endpoints. The disposable fixture accepts explicit username/password
+  query parameters on `/oauth/authorize` because the BDD client has no browser
+  session flow.
 
 ## Source layout
 
@@ -29,4 +38,6 @@ Bearer/JWT, self-hosted OAuth2, self-hosted OpenID Connect).
 `include_router()` it from `main.py`, no chart template change needed.
 Dependencies are installed for real at pod startup (see
 `templates/deployment.yaml`); add a new pip package to both
-`values.yaml`'s `pipVersions` and the `pip install` line there.
+`values.yaml`'s `pipVersions` and the `pip install` line there. Phase 3 pins
+`bcrypt`, `cryptography`, and `python-jose[cryptography]` alongside the
+existing FastAPI dependencies.

@@ -268,6 +268,11 @@ request table. Writing `| id | equals | <NoteId> |` as an assertion
 compares against the literal string `"<NoteId>"` and can never pass; if
 you need to prove a fetched value matches something captured earlier,
 assert other real fields instead of the id itself.
+Response headers can also be captured with `the value of response header ...`,
+or a query parameter can be extracted from a header URL with `the query
+parameter ... from response header ...`; the self-hosted OAuth authorization
+code scenario uses this to capture `code` from the real redirect `Location`
+header.
 
 ## Conditions
 

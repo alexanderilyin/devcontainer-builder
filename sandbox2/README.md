@@ -31,12 +31,18 @@ npm run test:junit    # per-scenario duration, written to report.xml
 
 ```
 features/
-  helm/            .feature files exercising real `helm chart`/`helm repo` behavior
+  helm/            .feature files exercising real `helm` behavior (chart, repo, directory, release)
   aliases/         .feature files validating the alias object types themselves
   step_definitions/
+    common.step.ts      the 3 type-agnostic Then steps, shared by every object type
+    directory.step.ts   Directory-scoped verbs: index, lint, package, dependency
+    helm.step.ts         HelmChart-scoped: define/has:, template, show
+    helm-repo.step.ts    HelmRepo-scoped: add, remove, update, list
+    release.step.ts      Release-scoped: install, upgrade, uninstall, rollback,
+                          status, history, test, get, list
   support/
     aliases/       Directory, File, URL, OCIArtifact + the alias-resolution machinery
-    helm/          HelmChart, HelmRepo, and real chart-fetching logic
+    helm/          HelmChart, HelmRepo, Release, chart_ref_args, and real chart-fetching logic
     (top level)    generic infra: assertions, command running, JMESPath querying, World
 ```
 
@@ -55,8 +61,18 @@ Given Helm Repo known as "<BitnamiHelmRepo>":
   | url      | https://charts.bitnami.com/bitnami |
 When I add Helm Repo known as "<BitnamiHelmRepo>" with:
   | OPTION | VALUE |
-Then the Helm Repo command exited with 0
+Then the command exited with 0
 ```
+
+`HelmChart`/`HelmRepo`/`Directory`/`File`/`URL`/`OCIArtifact` all resolve
+their alias fields to a **string** (a path, a URL, a ref). `Release` is
+the one exception: its `chart` field resolves to the actual `HelmChart`
+**object**, not a string - a chart's real CLI representation depends on
+its `chart.kind` (local path vs URL vs OCI vs reference+repo), so
+`Release` needs the object itself to build the right command later. It
+uses a separate `(alias) => HelmChart | undefined` resolver
+(`releaseFromTable` in `support/helm/release.ts`), not the shared
+string-only `resolveAlias`.
 
 ## `<Alias>` substitution
 
@@ -79,7 +95,14 @@ mix them up:
 | `PROPERTY \| VALUE` | `Given <Type> known as "<Alias>":` | Fields to construct an object from |
 | `OPTION \| VALUE` | `When I <verb> ... with:` | CLI flags to build a command's argv. Blank `OPTION` = positional arg. `VALUE` of `True`/`False` = boolean flag (present with no value, or omitted entirely) |
 | `KEY \| CONDITION \| VALUE` | `... has:` / `... result data has:` | Assertions against parsed structured data (Chart.yaml, `helm repo list -o yaml`, ...) |
-| `SOURCE \| CONDITION \| VALUE` | `the Helm Repo command exited with {int}:` | Assertions against a command's raw `STDOUT`/`STDERR` text |
+| `SOURCE \| CONDITION \| VALUE` | `the command exited with {int}:` | Assertions against a command's raw `STDOUT`/`STDERR` text |
+
+`the command exited with {int}[:]` and `the command result data has:`
+(`step_definitions/common.step.ts`) are type-agnostic - they only ever
+read `World.lastCommandResult`, so every `When` step across every object
+type reuses the same two `Then`s. Some subcommands' output genuinely isn't
+YAML (`helm show readme` is markdown, `helm get all` has no `-o` flag at
+all) - those scenarios use the raw-text form, not `result data has:`.
 
 ## `KEY` values are JMESPath
 
@@ -108,6 +131,21 @@ condition).
 - `charts/nginx-0.1.0.tgz` is regenerated fresh from `charts/nginx/` before
   every run (`support/hooks.ts`, a `BeforeAll` hook) so it can never drift
   from its source.
-- Every scenario that mutates real local `helm` state (repo add/remove)
-  does so idempotently and self-contained, so the whole suite can be run
-  repeatedly without manual cleanup.
+- `charts/test-dependency/` is a second fixture chart, existing solely to
+  declare a real dependency (on the same small `metrics-server` repo used
+  elsewhere) for exercising `helm dependency build/list/update` - its
+  `Chart.lock` and downloaded `charts/` subdirectory are real, regenerated
+  artifacts (gitignored), not something to hand-edit.
+- Every scenario that mutates real local `helm` state (repo add/remove) or
+  real cluster state (`Release` install/uninstall) does so idempotently
+  and self-contained, so the whole suite can be run repeatedly without
+  manual cleanup - confirmed by actually running it twice in a row and
+  checking `helm list` comes back empty afterward, not just assumed.
+- `Release` scenarios deploy into a dedicated `sandbox2-helm-test`
+  namespace, not whatever namespace your kubeconfig defaults to, to avoid
+  mixing disposable test releases into real infrastructure.
+- Literal `helm install` is genuinely not idempotent (a second install of
+  the same name errors) - that's real Helm behavior worth testing
+  directly, not something to design around. The rerun-safe idiom is
+  `helm upgrade` with `--install`/`--atomic` set (plain `OPTION | VALUE`
+  rows, same `True`/`False` convention as everywhere else).

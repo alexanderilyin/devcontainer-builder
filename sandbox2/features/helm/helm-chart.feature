@@ -106,6 +106,84 @@ Feature: BDD Framework for Helm Charts
       | version     | equals    | 25.1.10 |
       | appVersion  | equals    | 1.31.5  |
 
+  Scenario: Templating a Helm Chart
+    Given Directory known as "<NginxChartDirectory>":
+      | PROPERTY | VALUE          |
+      | path     | ./charts/nginx |
+    And Helm Chart known as "<LocalNginxHelmChart>":
+      | PROPERTY | VALUE                 |
+      | chart    | <NginxChartDirectory> |
+    When I template Helm Chart known as "<LocalNginxHelmChart>" with:
+      | OPTION | VALUE      |
+      |        | test-nginx |
+    Then the command exited with 0:
+      | SOURCE | CONDITION | VALUE                             |
+      | STDOUT | contains  | # Source: nginx/templates/service.yaml |
+
+  Scenario: Showing a Helm Chart's definition
+    Given Directory known as "<NginxChartDirectory>":
+      | PROPERTY | VALUE          |
+      | path     | ./charts/nginx |
+    And Helm Chart known as "<LocalNginxHelmChart>":
+      | PROPERTY | VALUE                 |
+      | chart    | <NginxChartDirectory> |
+    When I show chart for Helm Chart known as "<LocalNginxHelmChart>" with:
+      | OPTION | VALUE |
+    Then the command result data has:
+      | KEY  | CONDITION | VALUE |
+      | name | equals    | nginx |
+
+  Scenario: Showing a Helm Chart's values
+    Given Directory known as "<NginxChartDirectory>":
+      | PROPERTY | VALUE          |
+      | path     | ./charts/nginx |
+    And Helm Chart known as "<LocalNginxHelmChart>":
+      | PROPERTY | VALUE                 |
+      | chart    | <NginxChartDirectory> |
+    When I show values for Helm Chart known as "<LocalNginxHelmChart>" with:
+      | OPTION | VALUE |
+    Then the command result data has:
+      | KEY          | CONDITION | VALUE |
+      | replicaCount | equals    | 1     |
+
+  Scenario: Showing a Helm Chart's README
+    Given Directory known as "<NginxChartDirectory>":
+      | PROPERTY | VALUE          |
+      | path     | ./charts/nginx |
+    And Helm Chart known as "<LocalNginxHelmChart>":
+      | PROPERTY | VALUE                 |
+      | chart    | <NginxChartDirectory> |
+    When I show readme for Helm Chart known as "<LocalNginxHelmChart>" with:
+      | OPTION | VALUE |
+    Then the command exited with 0:
+      | SOURCE | CONDITION | VALUE                                  |
+      | STDOUT | contains  | Minimal stock-nginx deployment         |
+
+  Scenario: Showing a Helm Chart's CRDs
+    Given Directory known as "<NginxChartDirectory>":
+      | PROPERTY | VALUE          |
+      | path     | ./charts/nginx |
+    And Helm Chart known as "<LocalNginxHelmChart>":
+      | PROPERTY | VALUE                 |
+      | chart    | <NginxChartDirectory> |
+    When I show crds for Helm Chart known as "<LocalNginxHelmChart>" with:
+      | OPTION | VALUE |
+    Then the command exited with 0
+
+  Scenario: Showing all information about a Helm Chart
+    Given Directory known as "<NginxChartDirectory>":
+      | PROPERTY | VALUE          |
+      | path     | ./charts/nginx |
+    And Helm Chart known as "<LocalNginxHelmChart>":
+      | PROPERTY | VALUE                 |
+      | chart    | <NginxChartDirectory> |
+    When I show all for Helm Chart known as "<LocalNginxHelmChart>" with:
+      | OPTION | VALUE |
+    Then the command exited with 0:
+      | SOURCE | CONDITION | VALUE            |
+      | STDOUT | contains  | name: nginx      |
+      | STDOUT | contains  | replicaCount: 1  |
+
   Scenario: Rejecting an unknown property
     When I attempt to define Helm Chart known as "<LocalNginxHelmChart>":
       | PROPERTY | VALUE |

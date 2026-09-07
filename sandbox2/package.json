@@ -3,11 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "NODE_OPTIONS=--import=tsx cucumber-js",
-    "test:ff": "NODE_OPTIONS=--import=tsx cucumber-js --fail-fast",
-    "test:verbose": "NODE_OPTIONS=--import=tsx cucumber-js --format @cucumber/pretty-formatter",
-    "test:usage": "NODE_OPTIONS=--import=tsx cucumber-js --format usage",
-    "test:junit": "NODE_OPTIONS=--import=tsx cucumber-js --format junit:report.xml"
+    "test": "cucumber-js",
+    "test:ff": "cucumber-js --fail-fast",
+    "test:verbose": "cucumber-js --format @cucumber/pretty-formatter",
+    "test:usage": "cucumber-js --format usage",
+    "test:junit": "cucumber-js --format junit:report.xml"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^12.2.0",

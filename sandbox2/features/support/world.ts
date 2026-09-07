@@ -5,11 +5,13 @@ import { OciArtifact } from './aliases/oci_artifact.js';
 import { ChartUrl } from './aliases/url.js';
 import { HelmChart } from './helm/helm_chart.js';
 import { HelmRepo } from './helm/helm_repo.js';
+import { Release } from './helm/release.js';
 import { CommandResult } from './run_command.js';
 
 export class World extends CucumberWorld {
   charts = new Map<string, HelmChart>();
   repos = new Map<string, HelmRepo>();
+  releases = new Map<string, Release>();
   directories = new Map<string, Directory>();
   files = new Map<string, ChartFile>();
   urls = new Map<string, ChartUrl>();

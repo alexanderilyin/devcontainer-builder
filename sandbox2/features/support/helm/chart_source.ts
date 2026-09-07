@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ChartRef } from './helm_chart.js';
+import { chartRefToArgs } from './chart_ref_args.js';
 
 function readChartYamlFromArchive(archivePath: string): string {
   // No network needed - shell out to `tar` rather than add a JS tar
@@ -72,8 +73,7 @@ export function readChartYaml(chart: ChartRef): string {
       return readChartYamlFromArchive(chart.path);
     case 'url':
     case 'oci':
-      return pullChart([chart.ref]);
     case 'reference':
-      return pullChart(chart.repo ? [chart.name, '--repo', chart.repo] : [chart.name]);
+      return pullChart(chartRefToArgs(chart));
   }
 }

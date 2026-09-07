@@ -1,0 +1,13 @@
+apiVersion: v2
+name: test-dependency
+description: >-
+  Minimal chart whose only purpose is declaring a real dependency, for
+  exercising `helm dependency build/list/update` against a real, small
+  public chart. Not deployed anywhere - no templates of its own.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+dependencies:
+  - name: metrics-server
+    version: "3.14.0"
+    repository: https://kubernetes-sigs.github.io/metrics-server/

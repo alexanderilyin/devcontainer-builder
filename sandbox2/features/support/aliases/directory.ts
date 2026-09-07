@@ -26,3 +26,17 @@ export function directoryFromTable(dataTable: DataTable): Directory {
   const fields = Object.fromEntries(dataTable.hashes().map(({ PROPERTY, VALUE }) => [PROPERTY, VALUE]));
   return new Directory(fields);
 }
+
+// Empties a Directory's contents for real (except .gitkeep, which exists
+// solely so a downloads-style directory can be committed empty and still
+// pass the existence check above on a fresh checkout). Used to restore a
+// genuine "nothing downloaded yet" precondition before a scenario, rather
+// than asserting on state left over from a previous run.
+export function purgeDirectory(dir: Directory): void {
+  for (const entry of fs.readdirSync(dir.path)) {
+    if (entry === '.gitkeep') {
+      continue;
+    }
+    fs.rmSync(`${dir.path}/${entry}`, { recursive: true, force: true });
+  }
+}

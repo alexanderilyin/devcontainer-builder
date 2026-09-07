@@ -1,11 +1,11 @@
 import { setWorldConstructor, World as CucumberWorld, IWorldOptions } from '@cucumber/cucumber';
-import { Directory } from './directory.js';
-import { ChartFile } from './file.js';
-import { HelmChart } from './helm_chart.js';
-import { HelmRepo } from './helm_repo.js';
-import { OciArtifact } from './oci_artifact.js';
+import { Directory } from './aliases/directory.js';
+import { ChartFile } from './aliases/file.js';
+import { OciArtifact } from './aliases/oci_artifact.js';
+import { ChartUrl } from './aliases/url.js';
+import { HelmChart } from './helm/helm_chart.js';
+import { HelmRepo } from './helm/helm_repo.js';
 import { CommandResult } from './run_command.js';
-import { ChartUrl } from './url.js';
 
 export class World extends CucumberWorld {
   charts = new Map<string, HelmChart>();

@@ -43,52 +43,52 @@ Feature: BDD Framework for Helm Charts
       | PROPERTY | VALUE           |
       | chart    | <NginxChartUrl> |
     And Helm Chart known as "<UrlNginxHelmChart>" has:
-      | KEY         | CONDITION | VALUE       |
-      | apiVersion  | equals    | v2          |
-      | name        | equals    | nginx       |
-      | description | icontains | nginx       |
-      | type        | undefined |             |
-      | version     | equals    | 18.2.5      |
-      | appVersion  | equals    | 1.27.2      |
+      | KEY         | CONDITION | VALUE  |
+      | apiVersion  | equals    | v2     |
+      | name        | equals    | nginx  |
+      | description | contains  | NGINX  |
+      | type        | undefined |        |
+      | version     | equals    | 18.2.5 |
+      | appVersion  | equals    | 1.27.2 |
 
   Scenario: Defining Reference Chart
     Given URL known as "<BitnamiRepoUrl>":
-      | PROPERTY | VALUE                               |
-      | value    | https://charts.bitnami.com/bitnami  |
+      | PROPERTY | VALUE                              |
+      | value    | https://charts.bitnami.com/bitnami |
     And Helm Repo known as "<BitnamiHelmRepo>":
-      | PROPERTY | VALUE             |
-      | name     | bitnami           |
-      | url      | <BitnamiRepoUrl>  |
+      | PROPERTY | VALUE            |
+      | name     | bitnami          |
+      | url      | <BitnamiRepoUrl> |
     When I add Helm Repo known as "<BitnamiHelmRepo>" with:
       | OPTION | VALUE |
     And Helm Chart known as "<ReferenceNginxHelmChart>":
       | PROPERTY | VALUE         |
       | chart    | bitnami/nginx |
     And Helm Chart known as "<ReferenceNginxHelmChart>" has:
-      | KEY         | CONDITION | VALUE       |
-      | apiVersion  | equals    | v2          |
-      | name        | equals    | nginx       |
-      | description | icontains  | nginx       |
-      | type        | equals    | undefined |
-      | version     | equals    |       25.1.10 |
-      | appVersion  | equals    |        1.31.5 |
+      | KEY         | CONDITION | VALUE    |
+      | apiVersion  | equals    | v2       |
+      | name        | equals    | nginx    |
+      | description | contains  | NGINX    |
+      | type        | undefined |          |
+      | version     | equals    | 25.1.10  |
+      | appVersion  | equals    | 1.31.5   |
 
   Scenario: Defining Reference Chart via Repo
     Given URL known as "<BitnamiRepoUrl>":
-      | PROPERTY | VALUE                               |
-      | value    | https://charts.bitnami.com/bitnami  |
+      | PROPERTY | VALUE                              |
+      | value    | https://charts.bitnami.com/bitnami |
     And Helm Chart known as "<RepoReferenceNginxHelmChart>":
       | PROPERTY | VALUE            |
       | chart    | nginx            |
       | repo     | <BitnamiRepoUrl> |
     And Helm Chart known as "<RepoReferenceNginxHelmChart>" has:
-      | KEY         | CONDITION | VALUE       |
-      | apiVersion  | equals    | v2          |
-      | name        | equals    | nginx       |
-      | description | icontains  | nginx       |
-      | type        | undefined    |  |
-      | version     | equals    |       25.1.10 |
-      | appVersion  | equals    |        1.31.5 |
+      | KEY         | CONDITION | VALUE   |
+      | apiVersion  | equals    | v2      |
+      | name        | equals    | nginx   |
+      | description | contains  | NGINX   |
+      | type        | undefined |         |
+      | version     | equals    | 25.1.10 |
+      | appVersion  | equals    | 1.31.5  |
 
   Scenario: Defining OCI Chart
     Given OCIArtifact known as "<NginxOciArtifact>":
@@ -98,16 +98,34 @@ Feature: BDD Framework for Helm Charts
       | PROPERTY | VALUE              |
       | chart    | <NginxOciArtifact> |
     And Helm Chart known as "<OciNginxHelmChart>" has:
-      | KEY         | CONDITION | VALUE       |
-      | apiVersion  | equals    | v2          |
-      | name        | equals    | nginx       |
-      | description | contains  | NGINX       |
-      | type        | undefined |  |
-      | version     | equals    |       25.1.10 |
-      | appVersion  | equals    |        1.31.5 |
+      | KEY         | CONDITION | VALUE   |
+      | apiVersion  | equals    | v2      |
+      | name        | equals    | nginx   |
+      | description | contains  | NGINX   |
+      | type        | undefined |         |
+      | version     | equals    | 25.1.10 |
+      | appVersion  | equals    | 1.31.5  |
 
   Scenario: Rejecting an unknown property
     When I attempt to define Helm Chart known as "<LocalNginxHelmChart>":
       | PROPERTY | VALUE |
       | xxx      | yyy   |
     Then it should have failed with 'HelmChart has no field "xxx"'
+
+  Scenario: Rejecting an ambiguous chart reference
+    When I attempt to define Helm Chart known as "<AmbiguousHelmChart>":
+      | PROPERTY | VALUE |
+      | chart    | nginx |
+    Then it should have failed with 'Cannot determine chart reference kind for "nginx"'
+
+  Scenario: Rejecting a nonexistent raw directory path
+    When I attempt to define Helm Chart known as "<MissingDirectoryHelmChart>":
+      | PROPERTY | VALUE            |
+      | chart    | ./does-not-exist |
+    Then it should have failed with 'HelmChart local directory does not exist'
+
+  Scenario: Rejecting a nonexistent raw archive path
+    When I attempt to define Helm Chart known as "<MissingArchiveHelmChart>":
+      | PROPERTY | VALUE                |
+      | chart    | ./does-not-exist.tgz |
+    Then it should have failed with 'HelmChart local archive does not exist'

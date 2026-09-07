@@ -22,10 +22,20 @@ function check(actual: unknown, condition: string, expected: string): CheckResul
       return actualString.toLowerCase().includes(expected.toLowerCase())
         ? { pass: true, reason: '' }
         : { pass: false, reason: `expected "${actualString}" to contain "${expected}" (case-insensitive)` };
+    case 'not_equals':
+      return actualString !== expected
+        ? { pass: true, reason: '' }
+        : { pass: false, reason: `expected value to not equal "${expected}", but it did` };
     default:
-      return { pass: false, reason: `unknown condition "${condition}" (known conditions: equals, contains, icontains, undefined)` };
+      return { pass: false, reason: `unknown condition "${condition}" (known conditions: equals, contains, icontains, undefined, not_equals)` };
   }
 }
+
+// "not_equals" is the one condition where an array check must be universal
+// (every element must satisfy it - none may equal the forbidden value)
+// rather than existential (at least one matches) - it's a negation, so the
+// quantifier has to flip too.
+const UNIVERSAL_CONDITIONS = new Set(['not_equals']);
 
 // Builds its own message rather than relying on node:assert's automatic
 // actual/expected diff rendering, which doesn't identify which table row
@@ -41,12 +51,13 @@ export function assertCondition(key: string, actual: unknown, condition: string,
 
   if (Array.isArray(actual)) {
     const results = actual.map((value) => check(value, condition, expected));
-    if (!results.some((r) => r.pass)) {
-      const detail =
-        results.length === 0
-          ? '  (the list was empty)'
-          : results.map((r) => `  - ${r.reason}`).join('\n');
-      fail(`"${key}": no element satisfied "${condition} ${expected}" (checked ${results.length}):\n${detail}`);
+    const universal = UNIVERSAL_CONDITIONS.has(condition);
+    const overallPass = universal ? results.every((r) => r.pass) : results.some((r) => r.pass);
+    if (!overallPass) {
+      const relevant = universal ? results.filter((r) => !r.pass) : results;
+      const verb = universal ? 'at least one element violated' : 'no element satisfied';
+      const detail = relevant.length === 0 ? '  (the list was empty)' : relevant.map((r) => `  - ${r.reason}`).join('\n');
+      fail(`"${key}": ${verb} "${condition} ${expected}" (checked ${results.length}):\n${detail}`);
     }
     return;
   }

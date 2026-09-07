@@ -1,4 +1,4 @@
-import { World } from './world.js';
+import { World } from '../world.js';
 
 // Shared by both helm.step.ts (HelmChart's "chart"/"repo" fields) and
 // helm-repo.step.ts (HelmRepo's "url" field) - lives here rather than in

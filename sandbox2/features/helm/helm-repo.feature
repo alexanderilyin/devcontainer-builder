@@ -3,18 +3,6 @@ Feature: BDD Framework for Helm Repositories
   I want to register real Helm chart repositories
   So that scenarios referencing a chart by "repo-alias/name" can resolve it
 
-  Scenario: Defining a Helm Repo
-    Given URL known as "<BitnamiRepoUrl>":
-      | PROPERTY | VALUE                               |
-      | value    | https://charts.bitnami.com/bitnami  |
-    And Helm Repo known as "<BitnamiHelmRepo>":
-      | PROPERTY | VALUE            |
-      | name     | bitnami          |
-      | url      | <BitnamiRepoUrl> |
-    When I add Helm Repo known as "<BitnamiHelmRepo>" with:
-      | OPTION | VALUE |
-    Then the Helm Repo command exited with 0
-
   Scenario: Adding a Helm Repo
     Given URL known as "<MetricsServerRepoUrl>":
       | PROPERTY | VALUE                                             |
@@ -27,19 +15,19 @@ Feature: BDD Framework for Helm Repositories
       | OPTION                     | VALUE |
       | --insecure-skip-tls-verify | True  |
     Then the Helm Repo command exited with 0:
-      | SOURCE | CONDITION | VALUE                              |
-      | STDOUT | contains  | has been added to your repositories |
+      | SOURCE | CONDITION | VALUE                                |
+      | STDOUT | contains  | has been added to your repositories  |
     And I list Helm Repo with:
       | OPTION | VALUE |
       | -o     | yaml  |
     Then the Helm Repo command result data has:
-      | KEY      | CONDITION | VALUE                |
-      | [*].name | equals    | sandbox-add-example  |
+      | KEY      | CONDITION | VALUE               |
+      | [*].name | equals    | sandbox-add-example |
     And I remove Helm Repo known as "<SandboxAddExampleRepo>" with:
       | OPTION | VALUE |
     Then the Helm Repo command exited with 0
 
-  Scenario: Indexing a Helm Repo directory
+  Scenario: Indexing a Chart Directory
     Given Directory known as "<ChartsDirectory>":
       | PROPERTY | VALUE    |
       | path     | ./charts |
@@ -49,8 +37,8 @@ Feature: BDD Framework for Helm Repositories
 
   Scenario: Listing Helm Repos
     Given URL known as "<BitnamiRepoUrl>":
-      | PROPERTY | VALUE                               |
-      | value    | https://charts.bitnami.com/bitnami  |
+      | PROPERTY | VALUE                              |
+      | value    | https://charts.bitnami.com/bitnami |
     And Helm Repo known as "<BitnamiHelmRepo>":
       | PROPERTY | VALUE            |
       | name     | bitnami          |
@@ -77,8 +65,14 @@ Feature: BDD Framework for Helm Repositories
     And I remove Helm Repo known as "<SandboxRemoveExampleRepo>" with:
       | OPTION | VALUE |
     Then the Helm Repo command exited with 0:
-      | SOURCE | CONDITION | VALUE                                  |
-      | STDOUT | contains  | has been removed from your repositories |
+      | SOURCE | CONDITION | VALUE                                    |
+      | STDOUT | contains  | has been removed from your repositories  |
+    And I list Helm Repo with:
+      | OPTION | VALUE |
+      | -o     | yaml  |
+    Then the Helm Repo command result data has:
+      | KEY      | CONDITION  | VALUE                  |
+      | [*].name | not_equals | sandbox-remove-example |
 
   Scenario: Updating a Helm Repo
     Given URL known as "<MetricsServerRepoUrl>":
@@ -91,6 +85,6 @@ Feature: BDD Framework for Helm Repositories
     When I add Helm Repo known as "<MetricsServerHelmRepo>" with:
       | OPTION | VALUE |
     And I update Helm Repo known as "<MetricsServerHelmRepo>" with:
-      | OPTION                       | VALUE |
-      | --fail-on-repo-update-fail   | True  |
+      | OPTION                     | VALUE |
+      | --fail-on-repo-update-fail | True  |
     Then the Helm Repo command exited with 0

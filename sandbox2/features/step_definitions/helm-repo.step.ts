@@ -1,12 +1,13 @@
 import yaml from 'js-yaml';
 import { DataTable, Given, Then, When } from '@cucumber/cucumber';
 import { World } from '../support/world.js';
-import { helmRepoFromTable, HelmRepo } from '../support/helm_repo.js';
-import { directoryFromTable } from '../support/directory.js';
+import { helmRepoFromTable, HelmRepo } from '../support/helm/helm_repo.js';
+import { directoryFromTable } from '../support/aliases/directory.js';
 import { buildArgs, runCommand } from '../support/run_command.js';
 import { assertCondition } from '../support/assert_condition.js';
 import { query } from '../support/query.js';
-import { resolveAlias } from '../support/resolve_alias.js';
+import { resolveAlias } from '../support/aliases/resolve_alias.js';
+import { attempt } from '../support/attempt.js';
 
 Given('Helm Repo known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
   // Pure definition only - no `helm repo add` here. Mirrors HelmChart's
@@ -14,8 +15,16 @@ Given('Helm Repo known as {string}:', function (this: World, alias: string, data
   this.repos.set(alias, helmRepoFromTable(dataTable, (a) => resolveAlias(this, a)));
 });
 
+When('I attempt to define Helm Repo known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
+  attempt(this, () => this.repos.set(alias, helmRepoFromTable(dataTable, (a) => resolveAlias(this, a))));
+});
+
 Given('Directory known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
   this.directories.set(alias, directoryFromTable(dataTable));
+});
+
+When('I attempt to define Directory known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
+  attempt(this, () => this.directories.set(alias, directoryFromTable(dataTable)));
 });
 
 function getRepo(world: World, alias: string): HelmRepo {

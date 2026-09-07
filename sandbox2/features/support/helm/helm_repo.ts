@@ -1,5 +1,5 @@
 import { DataTable } from '@cucumber/cucumber';
-import { isAliasReference } from './alias_reference.js';
+import { isAliasReference } from '../aliases/alias_reference.js';
 
 const KNOWN_FIELDS = ['name', 'url'] as const;
 
@@ -37,7 +37,7 @@ export function helmRepoFromTable(dataTable: DataTable, resolveAlias: (alias: st
   if (fields.url && isAliasReference(fields.url)) {
     const resolved = resolveAlias(fields.url);
     if (resolved === undefined) {
-      throw new Error(`No Directory/File/URL/OCIArtifact registered as "${fields.url}"`);
+      throw new Error(`No Alias registered as "${fields.url}"`);
     }
     fields.url = resolved;
   }

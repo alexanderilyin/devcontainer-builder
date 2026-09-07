@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { DataTable } from '@cucumber/cucumber';
-import { isAliasReference } from './alias_reference.js';
+import { isAliasReference } from '../aliases/alias_reference.js';
 
 // The CHART_REF positional argument to `helm install/upgrade` covers six
 // forms (see `helm install --help`):
@@ -37,6 +37,12 @@ function parseChartRef(raw: string, repo: string | undefined): ChartRef {
 // Only the two local forms can be checked without a network call (helm
 // show chart / fetching the repo index). "reference"/"url"/"oci" are left
 // unverified here on purpose - see the comment at the top of the file.
+//
+// This is mostly redundant with Directory/File's own existence checks,
+// which already run when "chart" comes from a "<Alias>" (the recommended
+// path) - but "chart" also accepts a raw literal path typed directly,
+// bypassing the alias system entirely, and that path still needs its own
+// validation. Not dead code, just a narrower safety net than it looks.
 function validateChartExists(chart: ChartRef): void {
   if (chart.kind === 'local-directory') {
     if (!fs.existsSync(chart.path) || !fs.statSync(chart.path).isDirectory()) {
@@ -49,13 +55,10 @@ function validateChartExists(chart: ChartRef): void {
   }
 }
 
-const KNOWN_FIELDS = ['chart', 'repo', /* 'release', 'namespace', 'version' */] as const;
+const KNOWN_FIELDS = ['chart', 'repo'] as const;
 
 export class HelmChart {
   readonly chart: ChartRef;
-  // readonly release?: string;
-  // readonly namespace?: string;
-  // readonly version?: string;
 
   constructor(fields: Record<string, string>) {
     for (const key of Object.keys(fields)) {
@@ -68,9 +71,6 @@ export class HelmChart {
     }
     this.chart = parseChartRef(fields.chart, fields.repo);
     validateChartExists(this.chart);
-    // this.release = fields.release;
-    // this.namespace = fields.namespace;
-    // this.version = fields.version;
   }
 }
 
@@ -87,7 +87,7 @@ export function helmChartFromTable(dataTable: DataTable, resolveAlias: (alias: s
     if (fields[key] && isAliasReference(fields[key])) {
       const resolved = resolveAlias(fields[key]);
       if (resolved === undefined) {
-        throw new Error(`No Directory/File/URL/OCIArtifact registered as "${fields[key]}"`);
+        throw new Error(`No Alias registered as "${fields[key]}"`);
       }
       fields[key] = resolved;
     }

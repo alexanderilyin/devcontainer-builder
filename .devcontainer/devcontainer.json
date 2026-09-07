@@ -10,7 +10,8 @@
         "redhat.vscode-yaml",
         "alexkrechik.cucumberautocomplete",
         "HashiCorp.terraform",
-        "ms-azuretools.vscode-containers"
+        "ms-azuretools.vscode-containers",
+        "openai.chatgpt"
       ]
     }
   }

@@ -37,6 +37,18 @@ function check(actual: unknown, condition: string, expected: string): CheckResul
 // quantifier has to flip too.
 const UNIVERSAL_CONDITIONS = new Set(['not_equals']);
 
+// The boolean-only half of condition-checking, shared by assertCondition
+// (below, which throws with a detailed message) and the polling mechanism
+// in support/poll.ts (which needs a plain true/false every tick, not an
+// exception) - one implementation of "does this actually hold", not two.
+export function conditionHolds(actual: unknown, condition: string, expected: string): boolean {
+  if (Array.isArray(actual)) {
+    const results = actual.map((value) => check(value, condition, expected));
+    return UNIVERSAL_CONDITIONS.has(condition) ? results.every((r) => r.pass) : results.some((r) => r.pass);
+  }
+  return check(actual, condition, expected).pass;
+}
+
 // Builds its own message rather than relying on node:assert's automatic
 // actual/expected diff rendering, which doesn't identify which table row
 // (KEY) failed and can end up showing an unhelpful boolean diff instead of

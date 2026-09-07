@@ -9,7 +9,9 @@ Given('Directory known as {string}:', function (this: World, alias: string, data
 });
 
 When('I attempt to define Directory known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
-  attempt(this, () => this.directories.set(alias, directoryFromTable(dataTable)));
+  return attempt(this, () => {
+    this.directories.set(alias, directoryFromTable(dataTable));
+  });
 });
 
 function getDirectory(world: World, alias: string): Directory {

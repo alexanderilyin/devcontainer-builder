@@ -1,8 +1,8 @@
-{{- define "nginx.fullname" -}}
+{{- define "rest-api.fullname" -}}
 {{- .Release.Name }}-{{ .Chart.Name }}
 {{- end -}}
 
-{{- define "nginx.labels" -}}
+{{- define "rest-api.labels" -}}
 app.kubernetes.io/name: {{ .Chart.Name }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}

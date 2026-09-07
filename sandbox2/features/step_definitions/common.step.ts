@@ -18,6 +18,17 @@ Then('it should have failed with {string}', function (this: World, expectedMessa
   );
 });
 
+// For a failure that can genuinely land on more than one real message -
+// e.g. a poll can observe a Pod in more than one real transient bad state
+// on the way to its terminal one (ErrImagePull, then ImagePullBackOff) -
+// passes if the actual message includes ANY one of the listed candidates.
+Then('it should have failed with either:', function (this: World, table: DataTable) {
+  assert.ok(this.lastError, 'expected the previous step to fail, but it succeeded');
+  const candidates = table.hashes().map((row) => row.MESSAGE);
+  const matched = candidates.some((candidate) => this.lastError!.message.includes(candidate));
+  assert.ok(matched, `expected error message to include one of [${candidates.join(', ')}], got "${this.lastError!.message}"`);
+});
+
 // Two separate functions, not one shared function with an optional
 // trailing param: cucumber-js inspects a step function's declared arity to
 // detect legacy callback-style steps, and a 2nd declared parameter with no

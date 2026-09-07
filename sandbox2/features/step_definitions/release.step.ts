@@ -14,7 +14,9 @@ Given('Release known as {string}:', function (this: World, alias: string, dataTa
 });
 
 When('I attempt to define Release known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
-  attempt(this, () => this.releases.set(alias, releaseFromTable(dataTable, (a) => resolveChart(this, a))));
+  return attempt(this, () => {
+    this.releases.set(alias, releaseFromTable(dataTable, (a) => resolveChart(this, a)));
+  });
 });
 
 function getRelease(world: World, alias: string): Release {

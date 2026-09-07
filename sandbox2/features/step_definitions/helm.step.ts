@@ -18,7 +18,9 @@ Given('File known as {string}:', function (this: World, alias: string, dataTable
 });
 
 When('I attempt to define File known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
-  attempt(this, () => this.files.set(alias, chartFileFromTable(dataTable)));
+  return attempt(this, () => {
+    this.files.set(alias, chartFileFromTable(dataTable));
+  });
 });
 
 Given('URL known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
@@ -26,7 +28,9 @@ Given('URL known as {string}:', function (this: World, alias: string, dataTable:
 });
 
 When('I attempt to define URL known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
-  attempt(this, () => this.urls.set(alias, chartUrlFromTable(dataTable)));
+  return attempt(this, () => {
+    this.urls.set(alias, chartUrlFromTable(dataTable));
+  });
 });
 
 Given('OCIArtifact known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
@@ -34,7 +38,9 @@ Given('OCIArtifact known as {string}:', function (this: World, alias: string, da
 });
 
 When('I attempt to define OCIArtifact known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
-  attempt(this, () => this.ociArtifacts.set(alias, ociArtifactFromTable(dataTable)));
+  return attempt(this, () => {
+    this.ociArtifacts.set(alias, ociArtifactFromTable(dataTable));
+  });
 });
 
 Given('Helm Chart known as {string}:', function (this: World, name: string, dataTable: DataTable) {
@@ -42,7 +48,9 @@ Given('Helm Chart known as {string}:', function (this: World, name: string, data
 });
 
 When('I attempt to define Helm Chart known as {string}:', function (this: World, name: string, dataTable: DataTable) {
-  attempt(this, () => this.charts.set(name, helmChartFromTable(dataTable, (alias) => resolveAlias(this, alias))));
+  return attempt(this, () => {
+    this.charts.set(name, helmChartFromTable(dataTable, (alias) => resolveAlias(this, alias)));
+  });
 });
 
 Given('Helm Chart known as {string} has:', function (this: World, name: string, dataTable: DataTable) {

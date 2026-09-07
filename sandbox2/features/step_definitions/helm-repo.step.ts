@@ -12,7 +12,9 @@ Given('Helm Repo known as {string}:', function (this: World, alias: string, data
 });
 
 When('I attempt to define Helm Repo known as {string}:', function (this: World, alias: string, dataTable: DataTable) {
-  attempt(this, () => this.repos.set(alias, helmRepoFromTable(dataTable, (a) => resolveAlias(this, a))));
+  return attempt(this, () => {
+    this.repos.set(alias, helmRepoFromTable(dataTable, (a) => resolveAlias(this, a)));
+  });
 });
 
 function getRepo(world: World, alias: string): HelmRepo {

@@ -1,0 +1,13 @@
+apiVersion: v2
+name: rest-api
+description: >-
+  A real FastAPI REST-service test fixture - k8s health probes, CRUD
+  resources, and multiple real auth methods - for exercising sandbox2's
+  HTTP-testing BDD steps against real request/response round trips. Not a
+  production chart - the app's source is mounted from a ConfigMap onto a
+  stock python image and its dependencies are installed at pod startup
+  (see templates/deployment.yaml), a deliberate tradeoff to avoid needing
+  a custom-built/pushed container image.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

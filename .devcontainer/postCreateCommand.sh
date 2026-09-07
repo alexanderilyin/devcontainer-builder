@@ -19,6 +19,23 @@ fi
 
 arch="$(dpkg --print-architecture)"
 
+# --- Timezone -------------------------------------------------------------
+tz="America/Los_Angeles"
+if [ "$(cat /etc/timezone 2>/dev/null)" != "$tz" ]; then
+  echo "Setting timezone to ${tz}..."
+  $SUDO ln -sf "/usr/share/zoneinfo/${tz}" /etc/localtime
+  echo "$tz" | $SUDO tee /etc/timezone > /dev/null
+  if command -v dpkg-reconfigure >/dev/null 2>&1; then
+    $SUDO dpkg-reconfigure -f noninteractive tzdata 2>/dev/null || true
+  fi
+fi
+
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  if [ -f "$rc" ] && ! grep -qF 'export TZ=' "$rc"; then
+    echo "export TZ=\"${tz}\"" >> "$rc"
+  fi
+done
+
 if ! command -v curl >/dev/null 2>&1 || ! command -v gpg >/dev/null 2>&1; then
   $SUDO apt-get update
   $SUDO apt-get install -y --no-install-recommends ca-certificates curl gnupg
@@ -173,4 +190,4 @@ if command -v helm >/dev/null 2>&1 && ! helm plugin list 2>/dev/null | grep -qw 
   helm plugin install https://github.com/pidanou/helm-tui
 fi
 
-echo "postCreateCommand.sh done: helm, terraform, gh, kubectl, krew (kubectl-tree), k9s, docker cli, devcontainers cli, helm tui plugin ready."
+echo "postCreateCommand.sh done: timezone, helm, terraform, gh, kubectl, krew (kubectl-tree), k9s, docker cli, devcontainers cli, helm tui plugin ready."

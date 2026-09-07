@@ -1,0 +1,3 @@
+Hello from a real sandbox2 fixture file.
+This exact content is what features/rest/files.feature uploads and then
+verifies comes back byte-for-byte identical on download.

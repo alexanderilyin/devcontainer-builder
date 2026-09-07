@@ -7,7 +7,9 @@
     "test:ff": "cucumber-js --fail-fast",
     "test:verbose": "cucumber-js --format @cucumber/pretty-formatter",
     "test:usage": "cucumber-js --format usage",
-    "test:junit": "cucumber-js --format junit:report.xml"
+    "test:junit": "cucumber-js --format junit:report.xml",
+    "docs:serve": "mkdocs serve",
+    "docs:build": "mkdocs build --strict"
   },
   "devDependencies": {
     "@cucumber/cucumber": "^12.2.0",

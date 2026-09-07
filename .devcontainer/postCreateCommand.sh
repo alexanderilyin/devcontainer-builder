@@ -41,6 +41,26 @@ if ! command -v curl >/dev/null 2>&1 || ! command -v gpg >/dev/null 2>&1; then
   $SUDO apt-get install -y --no-install-recommends ca-certificates curl gnupg
 fi
 
+# --- MkDocs Material -----------------------------------------------------
+# Install into an isolated pipx environment so Debian's system Python stays
+# untouched while the mkdocs command remains available to the workspace user.
+if ! command -v mkdocs >/dev/null 2>&1; then
+  echo "Installing MkDocs Material..."
+  if ! command -v pipx >/dev/null 2>&1; then
+    $SUDO apt-get update
+    $SUDO apt-get install -y --no-install-recommends pipx python3-venv
+  fi
+  export PATH="$HOME/.local/bin:$PATH"
+  pipx install --include-deps mkdocs-material
+fi
+
+export PATH="$HOME/.local/bin:$PATH"
+for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+  if [ -f "$rc" ] && ! grep -qF 'export PATH="$HOME/.local/bin:$PATH"' "$rc"; then
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rc"
+  fi
+done
+
 # --- Helm ---------------------------------------------------------------
 if ! command -v helm >/dev/null 2>&1; then
   echo "Installing Helm..."
@@ -190,4 +210,4 @@ if command -v helm >/dev/null 2>&1 && ! helm plugin list 2>/dev/null | grep -qw 
   helm plugin install https://github.com/pidanou/helm-tui
 fi
 
-echo "postCreateCommand.sh done: timezone, helm, terraform, gh, kubectl, krew (kubectl-tree), k9s, docker cli, devcontainers cli, helm tui plugin ready."
+echo "postCreateCommand.sh done: timezone, helm, terraform, gh, kubectl, krew (kubectl-tree), k9s, docker cli, devcontainers cli, MkDocs Material, helm tui plugin ready."

@@ -5,8 +5,11 @@ description: Gotchas using `docker buildx` with a remote BuildKit daemon (--driv
 
 # BuildKit remote-driver gotchas
 
-Concrete lessons from `service/src/build.ts` (production code) and
-`features/support/build_fixtures.js` (disposable test BuildKit instances).
+Concrete lessons from `service/src/build.ts` (production code) and the
+disposable test BuildKit instances deployed via literal `helm upgrade
+--install ... buildkit-service --repo https://andrcuns.github.io/charts`
+commands in each `.feature` file's Background (see the
+`disposable-k8s-test-fixtures` skill).
 
 ## `DOCKER_CONFIG` controls two unrelated things at once
 
@@ -48,7 +51,10 @@ driver - the actual push happens on the remote daemon. Configure via
 ```
 
 The `andrcuns/charts` `buildkit-service` Helm chart exposes this directly
-as a `buildkitdToml` values string - see `features/support/build_fixtures.js`.
+as a `buildkitdToml` values string - written to a real file via `the
+following is written to "<path>":` and passed with `--set-file
+buildkitdToml=<path>` in the test suite's Background (see the
+`disposable-k8s-test-fixtures` skill).
 
 ## `docker buildx create --driver remote <endpoint>` is idempotent by name, reuse it
 

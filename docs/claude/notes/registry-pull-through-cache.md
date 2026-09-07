@@ -42,8 +42,10 @@ possible scopes (not yet decided - explicitly deferred, to be picked up as
 its own piece of work in a different scope of this repo):
 
 1. **Disposable test-only**: a `charts/test-registry-cache`-style fixture,
-   installed/uninstalled by `build_fixtures.js` alongside the other `test-*`
-   fixtures, configured as the *test* BuildKit's `docker.io` mirror. Fixes
+   deployed/torn down the same way the other `test-*` fixtures are (a
+   literal `helm upgrade --install`/`helm uninstall` pair driven from each
+   `.feature` file's Background - see the `disposable-k8s-test-fixtures`
+   skill), configured as the *test* BuildKit's `docker.io` mirror. Fixes
    flaky/rate-limited test runs, zero risk to production, matches the
    disposable-everything pattern already established for `test-*` charts.
    Doesn't help real production builds.
@@ -65,9 +67,10 @@ its own piece of work in a different scope of this repo):
   env var). Clients pull through it as if it *were* Docker Hub; it
   transparently fetches-and-caches on first miss.
 - BuildKit needs to be told to use it as a mirror for `docker.io`, via
-  `buildkitd.toml`'s `registry.mirrors` directive - same mechanism
-  `build_fixtures.js`'s `buildkitdToml()` already uses for the insecure-
-  registry trust config, e.g.:
+  `buildkitd.toml`'s `registry.mirrors` directive - same mechanism the test
+  suite's Background already uses for the insecure-registry trust config
+  (a `buildkitdToml` TOML file written via `the following is written to
+  "<path>":` and passed with `--set-file buildkitdToml=<path>`), e.g.:
   ```toml
   [registry."docker.io"]
     mirrors = ["<cache-host>:5000"]

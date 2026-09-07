@@ -95,9 +95,11 @@ seedRepos:
     dockerfile: |
       FROM mcr.microsoft.com/devcontainers/base:alpine-3.20
 
-# Generated fresh per test run (see features/support/build_fixtures.js) and
-# passed via --set-string - not committed anywhere, not meant to be stable
-# across deploys. sshAuthorizedKey is a single OpenSSH public-key line
+# Generated fresh per test run (openssl/ssh-keygen, via literal commands in
+# each .feature file's Background - see the disposable-k8s-test-fixtures
+# skill) and passed via --set-string/--set-file - not committed anywhere,
+# not meant to be stable across deploys. sshAuthorizedKey is a single
+# OpenSSH public-key line
 # (e.g. "ssh-ed25519 AAAA... comment"); tlsCert/tlsKey are PEM content for a
 # self-signed leaf certificate/key for this fixture's real Service DNS name.
 sshAuthorizedKey: ""

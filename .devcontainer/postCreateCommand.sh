@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs the CLI tools the base devcontainer image doesn't already provide:
-# Helm, Terraform, GitHub CLI, kubectl, k9s, Docker CLI + buildx plugin +
-# devcontainers CLI, and the `helm tui` plugin. No Dev Container
+# Starship, Helm, Terraform, GitHub CLI, kubectl, k9s, Docker CLI + buildx
+# plugin + devcontainers CLI, Claude Code CLI, and the `helm tui` plugin. No
+# Dev Container
 # Features are used here (they aren't usable yet in this repo's Coder/K8s
 # setup) - everything goes through plain shell so this script also works
 # when invoked manually via install.sh at the repo root.
@@ -18,6 +19,14 @@ if [ "$(id -u)" -ne 0 ] && command -v sudo >/dev/null 2>&1; then
 fi
 
 arch="$(dpkg --print-architecture)"
+
+# --- Node 20 + npm + git + sandbox2/ deps ---------------------------------
+# devcontainer.json's `image` is supposed to already provide these
+# (mcr.microsoft.com/devcontainers/typescript-node:1-20-bookworm) - this
+# call is a fast no-op there. It only does real work when the workspace
+# actually booted from something else (e.g. a Coder Workspace Template not
+# overriding its image), which otherwise breaks every npm-based step below.
+bash "$(dirname "${BASH_SOURCE[0]}")/typescript-node.sh"
 
 # --- Timezone -------------------------------------------------------------
 tz="America/Los_Angeles"
@@ -61,6 +70,19 @@ for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
   fi
 done
 
+# --- Starship prompt ------------------------------------------------------
+if ! command -v starship >/dev/null 2>&1; then
+  echo "Installing Starship prompt..."
+  curl -fsSL https://starship.rs/install.sh | sh -s -- -y
+fi
+
+if [ -f "$HOME/.bashrc" ] && ! grep -qF 'starship init bash' "$HOME/.bashrc"; then
+  echo 'eval "$(starship init bash)"' >> "$HOME/.bashrc"
+fi
+if [ -f "$HOME/.zshrc" ] && ! grep -qF 'starship init zsh' "$HOME/.zshrc"; then
+  echo 'eval "$(starship init zsh)"' >> "$HOME/.zshrc"
+fi
+
 # --- Helm ---------------------------------------------------------------
 if ! command -v helm >/dev/null 2>&1; then
   echo "Installing Helm..."
@@ -99,6 +121,11 @@ fi
 if ! command -v devcontainer >/dev/null 2>&1; then
   echo "Installing @devcontainers/cli..."
   npm install -g @devcontainers/cli
+fi
+
+if ! command -v claude >/dev/null 2>&1; then
+  echo "Installing Claude Code CLI..."
+  npm install -g @anthropic-ai/claude-code
 fi
 
 # --- GitHub CLI (apt repo, same key -> source -> apt-get install pattern as
@@ -210,4 +237,4 @@ if command -v helm >/dev/null 2>&1 && ! helm plugin list 2>/dev/null | grep -qw 
   helm plugin install https://github.com/pidanou/helm-tui
 fi
 
-echo "postCreateCommand.sh done: timezone, helm, terraform, gh, kubectl, krew (kubectl-tree), k9s, docker cli, devcontainers cli, MkDocs Material, helm tui plugin ready."
+echo "postCreateCommand.sh done: node, timezone, starship, helm, terraform, gh, kubectl, krew (kubectl-tree), k9s, docker cli, devcontainers cli, claude code cli, MkDocs Material, helm tui plugin ready."

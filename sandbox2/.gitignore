@@ -1,8 +1,0 @@
-node_modules/
-dist/
-.cache/
-report.xml
-charts/index.yaml
-charts/test-dependency/charts/*
-!charts/test-dependency/charts/.gitkeep
-charts/test-dependency/Chart.lock

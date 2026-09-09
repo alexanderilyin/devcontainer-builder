@@ -13,7 +13,8 @@
         "ms-azuretools.vscode-containers",
         "openai.chatgpt",
         "Google.geminicodeassist",
-        "sst-dev.opencode"
+        "sst-dev.opencode",
+        "Anthropic.claude-code"
       ]
     }
   }

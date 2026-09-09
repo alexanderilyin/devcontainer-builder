@@ -289,7 +289,28 @@ spec:
               chown -R git:git /home/git/.ssh
               chmod 700 /home/git/.ssh
               chmod 600 /home/git/.ssh/authorized_keys
-              exec /usr/sbin/sshd -D -e
+              # MaxStartups' low default throttles/drops a share of new
+              # unauthenticated connections once too many land close
+              # together - fine for a real host's normal traffic, but a BDD
+              # run can legitimately open a dozen+ real SSH connections
+              # against this one fixture in quick succession (one real
+              # `git clone` per SSH scenario). Raised well past anything
+              # this suite does concurrently so a fast test run doesn't
+              # trip a limit that exists for unrelated abuse-prevention
+              # reasons.
+              #
+              # PerSourcePenalties (default "yes" as of OpenSSH 9.8+, which
+              # this image's `apk add openssh` pulls) temporarily bans a
+              # source IP after a failed-auth/crashed connection from it -
+              # exactly what several of this suite's *deliberately* negative
+              # SSH scenarios (wrong key, bad pin, malformed key) produce,
+              # every time, from this one client's single source IP. Left
+              # on, the fixture starts silently dropping later scenarios'
+              # perfectly legitimate connections as collateral punishment
+              # for earlier scenarios' intentional failures. Off entirely:
+              # this is an isolated, ephemeral test fixture with one known
+              # client, not a host exposed to real abuse.
+              exec /usr/sbin/sshd -D -e -o MaxStartups=100 -o PerSourcePenalties=no
           ports:
             - name: ssh
               containerPort: 22

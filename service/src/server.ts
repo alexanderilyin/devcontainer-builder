@@ -67,6 +67,7 @@ const server = createServer(async (req, res) => {
     if (readiness.ready) {
       sendJson(res, 200, { status: "ready" });
     } else {
+      console.error(`readiness check failed: ${readiness.reason}`);
       sendJson(res, 503, { status: "not ready", reason: readiness.reason });
     }
     return;
@@ -109,3 +110,10 @@ const server = createServer(async (req, res) => {
 server.listen(serviceConfig.port, () => {
   console.log(`devcontainer-builder listening on :${serviceConfig.port}`);
 });
+
+// Running as PID 1 in the container (no init process) means the kernel's
+// default disposition for signals doesn't apply - an unhandled SIGTERM is
+// silently ignored rather than terminating the process, so a pod would
+// otherwise sit through its full terminationGracePeriodSeconds (30s
+// default) on every rollout/scale-down before kubelet resorts to SIGKILL.
+process.on("SIGTERM", () => process.exit(0));

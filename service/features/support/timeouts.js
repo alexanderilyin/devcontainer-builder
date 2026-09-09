@@ -9,4 +9,13 @@ import { setDefaultTimeout } from "@cucumber/cucumber";
 // mcr.microsoft.com/devcontainers/base needed more than 30s). Applies
 // globally (cheap for fast suites too - it only raises the ceiling before a
 // genuinely hung step gets reported, it doesn't slow anything down).
-setDefaultTimeout(60_000);
+//
+// Must stay comfortably above the largest `--timeout` any step's own `helm
+// upgrade --install --wait` uses (currently 180s, for test-git-server/
+// buildkit fixtures) - if Cucumber's own step timeout fires first, it only
+// abandons the JS-level await; the actual `helm` child process it was
+// waiting on keeps running in the background (orphaned), which then holds
+// a release lock and makes the *next* scenario's `helm upgrade` on the same
+// release fail with "another operation (install/upgrade/rollback) is in
+// progress" - a confusing failure one scenario removed from its real cause.
+setDefaultTimeout(240_000);

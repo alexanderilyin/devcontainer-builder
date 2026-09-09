@@ -36,14 +36,16 @@ the repeated failed probes.
 
 ## This is not a bug
 
-`helm --wait` (used by `build_fixtures.js`'s `installBuildFixtures()`)
-correctly waits through this - it only returns once the pod's readiness
-probe actually passes, however long that takes. The "Unhealthy" events are
-harmless noise, not a real failure. (Contrast with the *actual* bug found
-alongside this: `helm --wait` says nothing about Service-routing having
-caught up after the pod is ready - see the TCP-reachability-poll fix in
-`features/support/wait_for_reachable.js`, which is a genuinely different,
-already-fixed problem.)
+`helm --wait` (part of the `helm upgrade --install ... --wait` command each
+`.feature` file's Background runs to deploy this fixture) correctly waits
+through this - it only returns once the pod's readiness probe actually
+passes, however long that takes. The "Unhealthy" events are harmless noise,
+not a real failure. (Contrast with the *actual* bug found alongside this:
+`helm --wait` says nothing about Service-routing having caught up after the
+pod is ready - see the TCP-reachability-poll fix (now a literal `timeout
+30 bash -c 'until (exec 3<>/dev/tcp/<host>/<port>); do sleep 1; done'`
+command in the Background, per the `disposable-k8s-test-fixtures` skill),
+which is a genuinely different, already-fixed problem.)
 
 ## The real cost, and the deferred fix
 

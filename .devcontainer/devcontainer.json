@@ -9,7 +9,12 @@
         "hashicorp.terraform",
         "redhat.vscode-yaml",
         "alexkrechik.cucumberautocomplete",
-        "HashiCorp.terraform"
+        "HashiCorp.terraform",
+        "ms-azuretools.vscode-containers",
+        "openai.chatgpt",
+        "Google.geminicodeassist",
+        "sst-dev.opencode",
+        "Anthropic.claude-code"
       ]
     }
   }

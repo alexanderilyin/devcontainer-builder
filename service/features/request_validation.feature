@@ -14,13 +14,19 @@ Feature: POST /build request shape validation
   network-dependent) clone attempt.
 
   Background:
-    Given the devcontainer-builder service is configured with:
-      | BUILDKIT_ENDPOINT | tcp://buildkit.example:1234 |
-    And the service is running
+    Given "echo devcontainer-builder-${CODER_WORKSPACE_OWNER_NAME:-${USER:-local}}-default" has been run
+    And the command output is known as "<namespace>"
+    And "kubectl create namespace <namespace> --dry-run=client -o yaml | kubectl apply -f -" has been run
+    And "kubectl label namespace <namespace> pod-security.kubernetes.io/enforce=privileged --overwrite" has been run
+    And "docker buildx inspect devcontainer-builder-test || docker buildx create --name devcontainer-builder-test --driver remote tcp://buildkit-buildkit-service.buildkit.svc.cluster.local:1234" has been run
+    And "docker buildx build --builder devcontainer-builder-test -t ghcr.io/alexanderilyin/devcontainer-builder-test:test --push ../service" has been run
+    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always --set buildkit.endpoint=tcp://buildkit.example:1234 --set updateStrategy.type=Recreate --wait --timeout 120s" has been run
+    And "timeout 30 bash -c 'until (exec 3<>/dev/tcp/devcontainer-builder-devcontainer-builder.<namespace>.svc.cluster.local/8080); do sleep 1; done'" has been run
+    And the value "http://devcontainer-builder-devcontainer-builder.<namespace>.svc.cluster.local:8080" is known as "<base-url>"
 
   @negative
   Scenario: A malformed JSON body is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       { this is not valid JSON
       """
@@ -32,7 +38,7 @@ Feature: POST /build request shape validation
 
   @negative
   Scenario Outline: A well-formed but non-object JSON body is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       <body>
       """
@@ -48,7 +54,7 @@ Feature: POST /build request shape validation
 
   @negative @client-request
   Scenario: Missing repository is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {}
       """
@@ -62,7 +68,7 @@ Feature: POST /build request shape validation
 
   @negative @client-request
   Scenario: Empty-string repository is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       { "repository": "" }
       """
@@ -70,7 +76,7 @@ Feature: POST /build request shape validation
 
   @client-request
   Scenario: repository alone is a valid request shape
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       { "repository": "file:///nonexistent-repo-for-validation-tests.git" }
       """
@@ -78,7 +84,7 @@ Feature: POST /build request shape validation
 
   @negative @client-request
   Scenario: An empty-string branch is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       { "repository": "https://github.com/example/example-devcontainer.git", "branch": "" }
       """
@@ -86,7 +92,7 @@ Feature: POST /build request shape validation
 
   @client-request
   Scenario: An omitted branch is a valid request shape
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       { "repository": "file:///nonexistent-repo-for-validation-tests.git" }
       """
@@ -94,7 +100,7 @@ Feature: POST /build request shape validation
 
   @client-request
   Scenario Outline: A null value for an optional image field is treated as "not provided"
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "file:///nonexistent-repo-for-validation-tests.git",
@@ -111,7 +117,7 @@ Feature: POST /build request shape validation
 
   @negative @client-request
   Scenario Outline: An empty-string image field is rejected (unlike null)
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "https://github.com/example/example-devcontainer.git",
@@ -128,7 +134,7 @@ Feature: POST /build request shape validation
 
   @negative @client-request
   Scenario Outline: An incomplete or malformed gitCredentials is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "https://github.com/example/example-devcontainer.git",
@@ -148,7 +154,7 @@ Feature: POST /build request shape validation
   Scenario: gitCredentials with empty-string fields still passes shape validation
     # isValidBuildRequest only checks typeof "string" for gitCredentials
     # fields, not non-empty-ness - this documents that as current behavior.
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "file:///nonexistent-repo-for-validation-tests.git",
@@ -159,7 +165,7 @@ Feature: POST /build request shape validation
 
   @negative @client-request
   Scenario Outline: An incomplete or empty-field registryCredentials is rejected
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "https://github.com/example/example-devcontainer.git",
@@ -179,7 +185,7 @@ Feature: POST /build request shape validation
 
   @client-request
   Scenario: A fully-specified registryCredentials passes shape validation
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "file:///nonexistent-repo-for-validation-tests.git",
@@ -190,7 +196,7 @@ Feature: POST /build request shape validation
 
   @client-request
   Scenario: Unknown extra top-level fields are tolerated
-    When I send a POST request to "/build" with body:
+    When I send a POST request to "<base-url>/build" with body:
       """
       {
         "repository": "file:///nonexistent-repo-for-validation-tests.git",

@@ -1,3 +1,4 @@
+{{- if and .Values.registryMapping.enabled (not .Values.registryMapping.existingConfigMap) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -6,3 +7,4 @@ metadata:
     {{- include "devcontainer-builder.labels" . | nindent 4 }}
 data:
   registry-mapping.json: {{ .Values.registryMapping.rules | toJson | quote }}
+{{- end }}

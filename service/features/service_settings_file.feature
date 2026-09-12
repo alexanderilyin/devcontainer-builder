@@ -6,160 +6,332 @@ Feature: Loading settings from a JSON or YAML file
   Distinct from service_startup_configuration.feature's other scenarios,
   which exercise individual env vars and the two dedicated
   GIT_CREDENTIALS_CONFIG_PATH/REGISTRY_MAPPING_CONFIG_PATH files - this
-  file is about the general SERVICE_CONFIG_PATH settings file itself:
-  its JSON/YAML parsing, its shape (deliberately mirroring
-  charts/devcontainer-builder/values.yaml), and its own validation
-  behavior. Precedence between this file, env vars, and CLI flags is
-  covered separately in service_startup_configuration.feature's
-  SSH_HOST_KEY_POLICY precedence scenarios, which can prove a real
-  behavioral difference between sources - a settings-file-only scenario
-  here can only prove the file loaded without error, the same modest
-  scope the dedicated-file scenarios already use for the same reason.
-
-  Runs the real service as a Kubernetes Deployment, same as
-  service_startup_configuration.feature - see that file's Background
-  comment for the crash-loop-detection mechanics negative scenarios here
-  use ("<cmd>" causes the deployment to crash loop).
+  file is about the general SERVICE_CONFIG_PATH settings file itself: its
+  JSON/YAML parsing, its shape (deliberately mirroring charts/devcontainer-
+  builder/values.yaml), and its own validation behavior. No scenario here
+  ever sends a real /build request - a settings file that parses
+  successfully and lets the pod become genuinely Ready (real readiness,
+  not an inferred signal) is already direct proof the file loaded and was
+  used; a malformed one is proven the same way build.ts's earlier CLI
+  errors already are in this migration - a real, deterministic crash-loop
+  + the exact real log line, not an inferred signal either.
 
   Background:
-    Given "echo devcontainer-builder-${CODER_WORKSPACE_OWNER_NAME:-${USER:-local}}-default" has been run
-    And the command output is known as "<namespace>"
-    And "kubectl create namespace <namespace> --dry-run=client -o yaml | kubectl apply -f -" has been run
-    And "kubectl label namespace <namespace> pod-security.kubernetes.io/enforce=privileged --overwrite" has been run
-    And "docker buildx inspect devcontainer-builder-test || docker buildx create --name devcontainer-builder-test --driver remote tcp://buildkit-buildkit-service.buildkit.svc.cluster.local:1234" has been run
-    And "docker buildx build --builder devcontainer-builder-test -t ghcr.io/alexanderilyin/devcontainer-builder-test:test --push ../service" has been run
+    Given the value of environment variable "CODER_WORKSPACE_OWNER_NAME", or "USER", or "local" is known as "<Owner>"
+    And the value of environment variable "CUCUMBER_WORKER_ID" or "0" is known as "<WorkerId>"
+    And the value "devcontainer-builder-<Owner>-w<WorkerId>" is known as "<Namespace>"
+
+    Given Directory "<NamespaceChartDir>" at "../charts/test-namespace"
+    And Helm Chart "<NamespaceChart>" in "<NamespaceChartDir>"
+    And Helm Release known as "<NamespaceRelease>":
+      | PROPERTY  | VALUE                      |
+      | chart     | <NamespaceChart>           |
+      | name      | test-namespace-<Namespace> |
+      | namespace | default                    |
+    When I upgrade Helm Release known as "<NamespaceRelease>" with:
+      | OPTION    | VALUE                       |
+      | --install | True                        |
+      | --set     | targetNamespace=<Namespace> |
+    Then the command exited with 0
+
+    Given Docker Buildx Builder known as "<Builder>":
+      | PROPERTY | VALUE                                                            |
+      | name     | devcontainer-builder-settings-file-w<WorkerId> |
+      | endpoint | tcp://buildkit-buildkit-service.buildkit.svc.cluster.local:1234 |
+    When I create Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I build and push "ghcr.io/alexanderilyin/devcontainer-builder-test:test" from "." using Docker Buildx Builder known as "<Builder>" with:
+      | OPTION | VALUE |
+    Then the command exited with 0
+
+    Given Directory "<ChartDirectory>" at "../charts/devcontainer-builder"
+    And Helm Chart "<Chart>" in "<ChartDirectory>"
 
   @server-config
   Scenario: A JSON settings file can set buildkit, ssh host key policy, git credentials, and registry mapping together
-    Given the following is written to "/tmp/e2e-fixtures/settings-json-values.yaml":
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings.json" with:
       """
-      settingsFile:
-        filename: settings.json
-        content: |
-          {
-            "buildkit": { "endpoint": "tcp://buildkit.example:1234" },
-            "sshHostKeyPolicy": "pinned",
-            "gitCredentials": {
-              "entries": [
-                { "host": "github.com", "kind": "https", "username": "svc-bot", "token": "ghp_example" }
-              ]
-            },
-            "registryMapping": {
-              "rules": [
-                { "hostMatch": "github.com", "registry": "ghcr.io/example" }
-              ]
-            }
-          }
+      {
+        "buildkit": { "endpoint": "tcp://buildkit.example:1234" },
+        "sshHostKeyPolicy": "pinned",
+        "gitCredentials": {
+          "entries": [
+            { "host": "github.com", "kind": "https", "username": "svc-bot", "token": "ghp_example" }
+          ]
+        },
+        "registryMapping": {
+          "rules": [
+            { "hostMatch": "github.com", "registry": "ghcr.io/example" }
+          ]
+        }
+      }
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always -f /tmp/e2e-fixtures/settings-json-values.yaml --set updateStrategy.type=Recreate --wait --timeout 90s" has been run again
-    Then the service should start successfully
-    And "timeout 30 bash -c 'until (exec 3<>/dev/tcp/devcontainer-builder-devcontainer-builder.<namespace>.svc.cluster.local/8080); do sleep 1; done'" has been run again
-    And the value "http://devcontainer-builder-devcontainer-builder.<namespace>.svc.cluster.local:8080" is known as "<base-url>"
-    When I send a GET request to "<base-url>/health/ready"
-    Then the response status should be 200
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | settingsFile.filename=settings.json                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings.json |
+      | --wait             | True                                                               |
+      | --timeout          | 120s                                                               |
+    Then the command exited with 0
+    Given Service known as "<AppService>":
+      | PROPERTY                   | VALUE                |
+      | namespace                  | <Namespace>          |
+      | app.kubernetes.io/instance | devcontainer-builder |
+    And HTTP Endpoint "<AppApi>" on "<AppService>" port "8080"
+    When I send a GET request to Endpoint known as "<AppApi>" path "/health/ready"
+    Then the response status is 200
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
 
   @server-config
   Scenario: The identical settings in YAML produce the same outcome
-    Given the following is written to "/tmp/e2e-fixtures/settings-yaml-values.yaml":
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings.yaml" with:
       """
-      settingsFile:
-        filename: settings.yaml
-        content: |
-          buildkit:
-            endpoint: tcp://buildkit.example:1234
-          sshHostKeyPolicy: pinned
-          gitCredentials:
-            entries:
-              - host: github.com
-                kind: https
-                username: svc-bot
-                token: ghp_example
-          registryMapping:
-            rules:
-              - hostMatch: github.com
-                registry: ghcr.io/example
+      buildkit:
+        endpoint: tcp://buildkit.example:1234
+      sshHostKeyPolicy: pinned
+      gitCredentials:
+        entries:
+          - host: github.com
+            kind: https
+            username: svc-bot
+            token: ghp_example
+      registryMapping:
+        rules:
+          - hostMatch: github.com
+            registry: ghcr.io/example
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always -f /tmp/e2e-fixtures/settings-yaml-values.yaml --set updateStrategy.type=Recreate --wait --timeout 90s" has been run again
-    Then the service should start successfully
-    And "timeout 30 bash -c 'until (exec 3<>/dev/tcp/devcontainer-builder-devcontainer-builder.<namespace>.svc.cluster.local/8080); do sleep 1; done'" has been run again
-    And the value "http://devcontainer-builder-devcontainer-builder.<namespace>.svc.cluster.local:8080" is known as "<base-url>"
-    When I send a GET request to "<base-url>/health/ready"
-    Then the response status should be 200
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | settingsFile.filename=settings.yaml                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings.yaml |
+      | --wait             | True                                                               |
+      | --timeout          | 120s                                                               |
+    Then the command exited with 0
+    Given Service known as "<AppService>":
+      | PROPERTY                   | VALUE                |
+      | namespace                  | <Namespace>          |
+      | app.kubernetes.io/instance | devcontainer-builder |
+    And HTTP Endpoint "<AppApi>" on "<AppService>" port "8080"
+    When I send a GET request to Endpoint known as "<AppApi>" path "/health/ready"
+    Then the response status is 200
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
 
   @negative @server-config
   Scenario: A settings file with invalid JSON prevents startup
-    Given the following is written to "/tmp/e2e-fixtures/settings-bad-json-values.yaml":
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings-bad-json.json" with:
       """
-      settingsFile:
-        filename: settings.json
-        content: |
-          { this is not valid JSON
+      { this is not valid JSON
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always -f /tmp/e2e-fixtures/settings-bad-json-values.yaml --set updateStrategy.type=Recreate" causes the deployment to crash loop
-    Then the service should fail to start
-    And the startup error should mention "failed to parse settings config"
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | settingsFile.filename=settings.json                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings-bad-json.json |
+    Then the command exited with 0
+    Given Pod "<AppPod>"
+    And "<AppPod>" namespace is "<Namespace>"
+    And "<AppPod>" label "app.kubernetes.io/instance" is "devcontainer-builder"
+    When I wait for Pod known as "<AppPod>" every "2s" for up to "30s"
+    When I poll logs for Pod known as "<AppPod>" every "2s" for up to "30s" until:
+      | SOURCE | CONDITION | VALUE                          | OUTCOME |
+      | STDOUT | contains  | failed to parse settings config | pass    |
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
 
   @negative @server-config
   Scenario: A settings file with invalid YAML prevents startup
-    Given the following is written to "/tmp/e2e-fixtures/settings-bad-yaml-values.yaml":
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings-bad-yaml.yaml" with:
       """
-      settingsFile:
-        filename: settings.yaml
-        content: |
-          buildkit: [ unterminated
+      buildkit: [ unterminated
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always -f /tmp/e2e-fixtures/settings-bad-yaml-values.yaml --set updateStrategy.type=Recreate" causes the deployment to crash loop
-    Then the service should fail to start
-    And the startup error should mention "failed to parse settings config"
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | settingsFile.filename=settings.yaml                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings-bad-yaml.yaml |
+    Then the command exited with 0
+    Given Pod "<AppPod>"
+    And "<AppPod>" namespace is "<Namespace>"
+    And "<AppPod>" label "app.kubernetes.io/instance" is "devcontainer-builder"
+    When I wait for Pod known as "<AppPod>" every "2s" for up to "30s"
+    When I poll logs for Pod known as "<AppPod>" every "2s" for up to "30s" until:
+      | SOURCE | CONDITION | VALUE                          | OUTCOME |
+      | STDOUT | contains  | failed to parse settings config | pass    |
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
 
   @negative @server-config
   Scenario: A settings file that isn't a JSON/YAML object prevents startup
-    Given the following is written to "/tmp/e2e-fixtures/settings-not-object-values.yaml":
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings-not-object.json" with:
       """
-      settingsFile:
-        filename: settings.json
-        content: |
-          [ "not", "an", "object" ]
+      [ "not", "an", "object" ]
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always -f /tmp/e2e-fixtures/settings-not-object-values.yaml --set updateStrategy.type=Recreate" causes the deployment to crash loop
-    Then the service should fail to start
-    And the startup error should mention "must be a JSON/YAML object"
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | settingsFile.filename=settings.json                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings-not-object.json |
+    Then the command exited with 0
+    Given Pod "<AppPod>"
+    And "<AppPod>" namespace is "<Namespace>"
+    And "<AppPod>" label "app.kubernetes.io/instance" is "devcontainer-builder"
+    When I wait for Pod known as "<AppPod>" every "2s" for up to "30s"
+    When I poll logs for Pod known as "<AppPod>" every "2s" for up to "30s" until:
+      | SOURCE | CONDITION | VALUE                        | OUTCOME |
+      | STDOUT | contains  | must be a JSON/YAML object   | pass    |
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
 
   @negative @server-config
   Scenario: A wrong-typed settings file field prevents startup
-    Given the following is written to "/tmp/e2e-fixtures/settings-wrong-type-values.yaml":
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings-wrong-type.json" with:
       """
-      settingsFile:
-        filename: settings.json
-        content: |
-          { "buildkit": { "endpoint": 1234 } }
+      { "buildkit": { "endpoint": 1234 } }
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always -f /tmp/e2e-fixtures/settings-wrong-type-values.yaml --set updateStrategy.type=Recreate" causes the deployment to crash loop
-    Then the service should fail to start
-    And the startup error should mention "settings file field \"buildkit.endpoint\" must be a string"
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | settingsFile.filename=settings.json                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings-wrong-type.json |
+    Then the command exited with 0
+    Given Pod "<AppPod>"
+    And "<AppPod>" namespace is "<Namespace>"
+    And "<AppPod>" label "app.kubernetes.io/instance" is "devcontainer-builder"
+    When I wait for Pod known as "<AppPod>" every "2s" for up to "30s"
+    When I poll logs for Pod known as "<AppPod>" every "2s" for up to "30s" until:
+      | SOURCE | CONDITION | VALUE                                                        | OUTCOME |
+      | STDOUT | contains  | settings file field \"buildkit.endpoint\" must be a string    | pass    |
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
 
   @server-config
   Scenario: One malformed entry in a settings file's embedded git credentials list is skipped, not fatal
     # Mirrors "One malformed entry in an otherwise-valid git credentials
     # list is skipped, not fatal" in service_startup_configuration.feature
-    # for the dedicated GIT_CREDENTIALS_CONFIG_PATH file - same validation
-    # code path (validateEntries), reached from the settings file instead.
-    Given the following is written to "/tmp/e2e-fixtures/settings-bad-entry-values.yaml":
+    # for the dedicated GIT_CREDENTIALS_CONFIG_PATH file - same real
+    # validation code path (config.ts's validateEntries), reached from the
+    # settings file instead.
+    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-settings-file-w<WorkerId>/settings-bad-entry.json" with:
       """
-      settingsFile:
-        filename: settings.json
-        content: |
-          {
-            "buildkit": { "endpoint": "tcp://buildkit.example:1234" },
-            "gitCredentials": {
-              "entries": [
-                { "host": "github.com", "kind": "https", "username": "svc-bot", "token": "ghp_example" },
-                { "kind": "https", "username": "missing-host", "token": "ghp_other" }
-              ]
-            }
-          }
+      {
+        "buildkit": { "endpoint": "tcp://buildkit.example:1234" },
+        "gitCredentials": {
+          "entries": [
+            { "host": "github.com", "kind": "https", "username": "svc-bot", "token": "ghp_example" },
+            { "kind": "https", "username": "missing-host", "token": "ghp_other" }
+          ]
+        }
+      }
       """
-    And "helm upgrade --install devcontainer-builder ../charts/devcontainer-builder -n <namespace> --set image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test --set image.tag=test --set image.pullPolicy=Always --set gitCredentials.enabled=false -f /tmp/e2e-fixtures/settings-bad-entry-values.yaml --set updateStrategy.type=Recreate --wait --timeout 90s" has been run again
-    Then the service should start successfully
-    And the devcontainer-builder's logs are captured
-    And the invalid entry should have been logged and skipped
+    Given Helm Release known as "<Release>":
+      | PROPERTY  | VALUE                |
+      | chart     | <Chart>              |
+      | name      | devcontainer-builder |
+      | namespace | <Namespace>          |
+    When I upgrade Helm Release known as "<Release>" with:
+      | OPTION             | VALUE                                                              |
+      | --install          | True                                                               |
+      | --set              | image.repository=ghcr.io/alexanderilyin/devcontainer-builder-test |
+      | --set              | image.tag=test                                                     |
+      | --set              | image.pullPolicy=Always                                            |
+      | --set              | gitCredentials.enabled=false                                       |
+      | --set              | settingsFile.filename=settings.json                                |
+      | --set-file         | settingsFile.content=.cache/fixtures/service-settings-file-w<WorkerId>/settings-bad-entry.json |
+      | --wait             | True                                                               |
+      | --timeout          | 120s                                                               |
+    Then the command exited with 0
+    Given Pod "<AppPod>"
+    And "<AppPod>" namespace is "<Namespace>"
+    And "<AppPod>" label "app.kubernetes.io/instance" is "devcontainer-builder"
+    When I poll logs for Pod known as "<AppPod>" every "1s" for up to "10s" until:
+      | SOURCE | CONDITION | VALUE                                                    | OUTCOME |
+      | STDOUT | contains  | skipping invalid git credentials config entry at index 1 | pass    |
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0

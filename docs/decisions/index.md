@@ -25,3 +25,5 @@ change, never rewritten in place).
 | [0004](0004-ssh-host-key-verification-always-enforced.md) | SSH host key verification is always enforced | accepted |
 | [0005](0005-bdd-suite-on-thomas.md) | The BDD suite runs on Thomas, a real-command framework | accepted |
 | [0006](0006-privileged-test-namespace-via-chart.md) | A reusable chart owns every test namespace, not `--create-namespace` | accepted |
+| [0007](0007-structured-registry-auth-and-auto-rendered-settings.md) | Structured registry auth, and an auto-rendered settings file | accepted |
+| [0008](0008-image-existence-and-deletion-endpoints.md) | `GET`/`DELETE /image` for existence checks and best-effort deletion | accepted |

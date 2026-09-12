@@ -13,17 +13,14 @@ Feature: Registry push authentication
   Scenario, not Background, since "ambient registry auth" varies.
 
   "ambient registry auth not configured" is the chart's own default
-  (registryAuth.dockerConfigJson defaults to an empty {"auths":{}}), so most
-  scenarios need no special config beyond the shared image/buildkit setup.
-  Only the "correct ambient auth" scenario needs a real dockerConfigJson
-  value - built from a base64'd "svc-bot:hunter2" (the same fixed
-  credentials test-registry-authed itself is configured with in
-  Background). That base64 encoding is a fixed, static value with no
-  dependency on the real namespace or anything else dynamic - computed
-  once up front (`printf '%s' 'svc-bot:hunter2' | base64`) and written
-  directly into this file as a literal, rather than reproducing the old
-  suite's own runtime `"<cmd>" has been run` + "the command output is known
-  as" round trip for a value that never actually varies between runs.
+  (registryAuth.registries defaults to an empty list, rendering
+  {"auths":{}}), so most scenarios need no special config beyond the
+  shared image/buildkit setup. Only the "correct ambient auth" scenario
+  needs real ambient credentials - the same fixed "svc-bot"/"hunter2"
+  test-registry-authed itself is configured with in Background, set
+  directly as registryAuth.registries[0].username/password - the chart
+  builds the real dockerconfigjson itself, no hand-built/pre-base64'd
+  value needed.
 
   Background:
     Given the value of environment variable "CODER_WORKSPACE_OWNER_NAME", or "USER", or "local" is known as "<Owner>"
@@ -183,14 +180,6 @@ Feature: Registry push authentication
 
   @client-request
   Scenario: Correct ambient registry auth succeeds against an auth-enforcing registry
-    When I create File known as "<AmbientAuthValuesFile>" at ".cache/fixtures/registry-auth-w<WorkerId>/ambient-auth-values.yaml" with:
-      """
-      gitCredentials:
-        enabled: false
-      registryAuth:
-        dockerConfigJson: |
-          {"auths":{"<AuthedRegistryUrl>":{"auth":"c3ZjLWJvdDpodW50ZXIy"}}}
-      """
     Given Helm Release known as "<Release>":
       | PROPERTY  | VALUE                |
       | chart     | <Chart>              |
@@ -203,7 +192,10 @@ Feature: Registry push authentication
       | --set              | image.tag=test                                                     |
       | --set              | image.pullPolicy=Always                                            |
       | --set              | buildkit.endpoint=<BuildkitEndpoint>                               |
-      | -f                 | .cache/fixtures/registry-auth-w<WorkerId>/ambient-auth-values.yaml             |
+      | --set              | gitCredentials.enabled=false                                       |
+      | --set              | registryAuth.registries[0].registry=<AuthedRegistryUrl>            |
+      | --set              | registryAuth.registries[0].username=svc-bot                       |
+      | --set              | registryAuth.registries[0].password=hunter2                       |
       | --wait             | True                                                               |
       | --timeout          | 120s                                                               |
     Then the command exited with 0

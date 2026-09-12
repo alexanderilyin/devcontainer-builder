@@ -21,20 +21,16 @@ No git credentials are needed for this walkthrough — a public
 repository clones anonymously; see
 [Credential handling](../concepts/credential-handling.md#no-credential-configured-clone-verbatim).
 
-## 1. Prepare a Docker Hub auth value
-
-The chart's [`registryAuth.dockerConfigJson`](../reference/HELM.md#registryauth)
-value is a real docker-config-JSON string — the same shape
-`~/.docker/config.json` uses, keyed by Docker Hub's real registry host,
-`https://index.docker.io/v1/`:
+## 1. Write a values file
 
 ```bash
 DOCKERHUB_USERNAME=<your-dockerhub-username>
-DOCKERHUB_TOKEN=<your-access-token>
-AUTH=$(printf '%s:%s' "$DOCKERHUB_USERNAME" "$DOCKERHUB_TOKEN" | base64)
 ```
 
-## 2. Write a values file
+The chart's [`registryAuth.registries`](../reference/HELM.md#registryauth)
+value is a plain list of `{registry, username, password}` entries — the
+chart builds the real docker-config-JSON itself, so there's no manual
+base64-encoding or hand-built JSON here:
 
 ```yaml title="quickstart-values.yaml"
 image:
@@ -45,7 +41,10 @@ buildkit:
   endpoint: "tcp://<your-buildkit-host>:<port>"
 
 registryAuth:
-  dockerConfigJson: '{"auths":{"https://index.docker.io/v1/":{"auth":"<value of $AUTH above>"}}}'
+  registries:
+    - registry: https://index.docker.io/v1/ # Docker Hub's real registry host
+      username: <your-dockerhub-username> # same value as $DOCKERHUB_USERNAME above
+      password: <your-access-token>
 ```
 
 `image.repository`/`tag` here are the **devcontainer-builder service's
@@ -55,7 +54,7 @@ this way, every `/build` request pushes using these ambient
 credentials unless it supplies its own
 [`registryCredentials`](../reference/API.md#post-build).
 
-## 3. Install the chart
+## 2. Install the chart
 
 ```bash
 helm install devcontainer-builder charts/devcontainer-builder \
@@ -72,7 +71,7 @@ curl -s http://localhost:8080/health/ready
 # {"status":"ready"}
 ```
 
-## 4. Build a public repo and push it to Docker Hub
+## 3. Build a public repo and push it to Docker Hub
 
 Any public repo with a `.devcontainer/devcontainer.json` (or a root
 `.devcontainer.json`) works — Microsoft's own
@@ -128,4 +127,4 @@ code, never the real underlying error text (that's in the pod's own
 logs) — see the
 [warning in the API reference](../reference/API.md#post-build) before
 assuming a `500` is a devcontainer-builder bug rather than, say, a
-`docker login` mistake in step 1.
+typo'd `registryAuth.registries` entry in step 1.

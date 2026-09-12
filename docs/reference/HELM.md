@@ -33,6 +33,27 @@ helm template charts/devcontainer-builder -f my-values.yaml
 |---|---|---|
 | `buildkit.endpoint` | `""` | e.g. `tcp://buildkit-buildkit-service.buildkit.svc.cluster.local:1234`. Unset means readiness never passes — see [`/health/ready`](API.md#get-healthready). |
 
+## `build`
+
+Server-wide defaults for platform selection and BuildKit build options,
+used whenever a `/build` request doesn't specify its own `platforms` or
+`buildOptions` — see [API](API.md#post-build) for the per-request fields.
+
+| Key | Default | Notes |
+|---|---|---|
+| `build.platforms` | `[]` | e.g. `["linux/amd64", "linux/arm64"]`. Empty means today's behavior: no `--platform` flag, builder's native platform. |
+| `build.noCache` | `false` | Passed as `--no-cache` when `true`. |
+| `build.cacheFrom` | `""` | Passed as `--cache-from <value>`, e.g. `type=registry,ref=ghcr.io/example/app:buildcache`. |
+| `build.cacheTo` | `""` | Passed as `--cache-to <value>`, e.g. `type=registry,ref=ghcr.io/example/app:buildcache,mode=max`. Points BuildKit's own layer cache at the same registry the image is pushed to — persistent and shared across replicas, unlike a per-pod cache. |
+| `build.mode` | `auto` | `auto` or `never` — passed as `--buildkit <value>`, controlling whether BuildKit is used at all. |
+
+```yaml
+build:
+  platforms: ["linux/amd64", "linux/arm64"]
+  cacheFrom: "type=registry,ref=ghcr.io/example/app:buildcache"
+  cacheTo: "type=registry,ref=ghcr.io/example/app:buildcache,mode=max"
+```
+
 ## `registryAuth`
 
 Ambient registry push credentials — used whenever a `/build` request
@@ -40,12 +61,20 @@ doesn't supply its own `registryCredentials`.
 
 | Key | Default | Notes |
 |---|---|---|
-| `registryAuth.existingSecret` | `""` | Name of an existing `kubernetes.io/dockerconfigjson`-shaped Secret. |
-| `registryAuth.dockerConfigJson` | `""` | Inline docker-config-JSON string, rendered into a chart-managed Secret if `existingSecret` is unset. |
+| `registryAuth.existingSecret` | `""` | Name of an existing `kubernetes.io/dockerconfigjson`-shaped Secret. If set, `registries` below is ignored. |
+| `registryAuth.registries` | `[]` | List of `{registry, username, password}` entries. The chart builds the real docker-config-JSON (`{"auths": {"<registry>": {"auth": "<base64 user:pass>"}}}`) and renders it into a chart-managed Secret if `existingSecret` is unset — nobody hand-builds or pre-base64-encodes JSON themselves. |
 
-Unconfigured means an empty `{"auths":{}}` — pushes rely entirely on
-whatever the target registry allows anonymously, or on a per-request
-`registryCredentials` override.
+```yaml
+registryAuth:
+  registries:
+    - registry: https://index.docker.io/v1/ # Docker Hub's real registry host
+      username: svc-bot
+      password: hunter2
+```
+
+Unconfigured (empty `registries`, no `existingSecret`) means an empty
+`{"auths":{}}` — pushes rely entirely on whatever the target registry
+allows anonymously, or on a per-request `registryCredentials` override.
 
 ## `gitCredentials`
 
@@ -73,18 +102,23 @@ Server-side repo → registry routing rules, used to resolve
 
 | Key | Default | Notes |
 |---|---|---|
-| `registryMapping.enabled` | `true` | `false` omits `REGISTRY_MAPPING_CONFIG_PATH` and its volume entirely. |
-| `registryMapping.existingConfigMap` | `""` | Name of an existing ConfigMap containing a `registry-mapping.json` key. |
-| `registryMapping.rules` | `[]` | Inline rules, rendered into a chart-managed ConfigMap if `existingConfigMap` is unset. |
+| `registryMapping.enabled` | `true` | `false` omits `registryMapping` from the rendered settings file entirely. |
+| `registryMapping.existingConfigMap` | `""` | Name of an existing ConfigMap containing a `registry-mapping.json` key, mounted separately with its own dedicated `REGISTRY_MAPPING_CONFIG_PATH` env var. If set, `rules` below is ignored. |
+| `registryMapping.rules` | `[]` | Inline rules. Unlike `existingConfigMap`, these don't get a dedicated ConfigMap — they're folded straight into the chart-rendered settings file below. |
 
-## `settingsFile`
+## The settings file
 
-The unified [settings file](CONFIGURATION.md#the-settings-file).
-
-| Key | Default | Notes |
-|---|---|---|
-| `settingsFile.content` | `""` | Inline JSON/YAML content, rendered into a chart-managed ConfigMap and mounted at `SERVICE_CONFIG_PATH`. Empty omits the env var/volume entirely. |
-| `settingsFile.filename` | `settings.json` | Must match `content`'s real format — `config.ts` picks its parser by extension (`.json`, `.yaml`, `.yml`). |
+`SERVICE_CONFIG_PATH` and its ConfigMap are entirely automatic — there's
+no `settingsFile.*` value to set. The chart renders `settings.json` from
+values that already exist elsewhere in this page: `buildkit.endpoint`,
+`build.*` (only the sub-fields that differ from their zero-value default),
+`sshHostKeyPolicy`, and `registryMapping.rules` (only when
+`registryMapping.existingConfigMap` is unset). `gitCredentials` is
+deliberately never included — `GIT_CREDENTIALS_CONFIG_PATH` always takes
+precedence over a settings-file copy of the same field (see
+[Configuration](CONFIGURATION.md#the-settings-file) for `config.ts`'s
+real precedence rules), so a copy here would be both inert and a needless
+duplicate of sensitive material in a less-guarded ConfigMap.
 
 ## Escape hatches: `extraArgs`, `extraEnv`, `extraVolumes`, `extraVolumeMounts`
 

@@ -54,6 +54,13 @@ block — tests are currently limited to variable-validation failures
 (the precondition below and the required-variable checks), not the real
 HTTP round trip.
 
+This exact limitation is the motivation for a companion **Terraform
+provider** — [`provider/`](https://github.com/alexanderilyin/devcontainer-builder/tree/main/provider),
+a `devcontainerbuilder_build` *resource* instead of a `data` source, so the
+build only runs on `apply`, and only when there's an actual diff. See
+[`provider/README.md`](https://github.com/alexanderilyin/devcontainer-builder/tree/main/provider/README.md).
+Both are meant to coexist for now — this module isn't being replaced.
+
 ## The one real precondition
 
 ```hcl

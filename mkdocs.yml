@@ -30,6 +30,8 @@ nav:
       - 0004. SSH host key verification is always enforced: decisions/0004-ssh-host-key-verification-always-enforced.md
       - 0005. The BDD suite runs on Thomas, a real-command framework: decisions/0005-bdd-suite-on-thomas.md
       - 0006. A reusable chart owns every test namespace, not --create-namespace: decisions/0006-privileged-test-namespace-via-chart.md
+      - 0007. Structured registry auth, and an auto-rendered settings file: decisions/0007-structured-registry-auth-and-auto-rendered-settings.md
+      - 0008. GET/DELETE /image for existence checks and best-effort deletion: decisions/0008-image-existence-and-deletion-endpoints.md
 
 theme:
   name: material

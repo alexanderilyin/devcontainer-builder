@@ -28,5 +28,5 @@ export default {
   // docs/project/testing.md) specifically so this is safe by default -
   // override with `--parallel N` (N=1 to force fully sequential) rather
   // than editing this file for a one-off run.
-  parallel: 8,
+  parallel: 10,
 };

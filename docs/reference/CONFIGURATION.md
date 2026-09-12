@@ -23,6 +23,11 @@ concern documented in
 | SSH host key policy | `--ssh-host-key-policy` | `SSH_HOST_KEY_POLICY` | `sshHostKeyPolicy` | `tofu` |
 | Git credentials file path | `--git-credentials-config-path` | `GIT_CREDENTIALS_CONFIG_PATH` | *(none — see below)* | *(unset — empty list)* |
 | Registry mapping file path | `--registry-mapping-config-path` | `REGISTRY_MAPPING_CONFIG_PATH` | *(none — see below)* | *(unset — empty list)* |
+| Default platforms | `--build-platforms` (comma-separated) | `BUILD_PLATFORMS` (comma-separated) | `build.platforms` | `[]` (no `--platform` passed) |
+| Default no-cache | `--build-no-cache` | `BUILD_NO_CACHE` (`"true"`/`"false"`) | `build.noCache` | `false` |
+| Default cache-from | `--build-cache-from` | `BUILD_CACHE_FROM` | `build.cacheFrom` | *(unset)* |
+| Default cache-to | `--build-cache-to` | `BUILD_CACHE_TO` | `build.cacheTo` | *(unset)* |
+| Default BuildKit mode | `--buildkit-mode` | `BUILDKIT_MODE` | `build.mode` | `auto` |
 | Settings file path itself | `--settings` | `SERVICE_CONFIG_PATH` | — | *(unset)* |
 
 `gitCredentials`/`registryMapping` have no CLI flag or env var of their
@@ -42,6 +47,13 @@ immediately:
 ```json
 {
   "buildkit": { "endpoint": "tcp://buildkit.example:1234" },
+  "build": {
+    "platforms": ["linux/amd64", "linux/arm64"],
+    "noCache": false,
+    "cacheFrom": "type=registry,ref=ghcr.io/example/app:buildcache",
+    "cacheTo": "type=registry,ref=ghcr.io/example/app:buildcache,mode=max",
+    "mode": "auto"
+  },
   "service": { "port": 8080 },
   "sshHostKeyPolicy": "pinned",
   "gitCredentials": {
@@ -66,11 +78,13 @@ never re-templated back into the chart.
 !!! warning "A malformed or non-object settings file crashes at startup"
     Invalid JSON/YAML, a file that parses to something other than an
     object, or a wrong-typed known field (`buildkit.endpoint` not a
-    string, `service.port` not a number, `gitCredentials`/
-    `registryMapping` not an object, `.entries`/`.rules` not an array)
-    all throw synchronously at startup — the same "fail loud, fail
-    immediately" behavior as every other config source, not a silently
-    ignored or partially-applied file.
+    string, `build.platforms` not an array of strings, `build.noCache`
+    not a boolean, `build.cacheFrom`/`build.cacheTo` not a string,
+    `build.mode` not `"auto"`/`"never"`, `service.port` not a number,
+    `gitCredentials`/`registryMapping` not an object, `.entries`/`.rules`
+    not an array) all throw synchronously at startup — the same "fail
+    loud, fail immediately" behavior as every other config source, not a
+    silently ignored or partially-applied file.
 
 ## `gitCredentials.entries` / `registryMapping.rules`
 

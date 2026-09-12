@@ -7,11 +7,12 @@ Feature: End-to-end build scenarios
   These complement the narrowly-scoped scenarios in the other feature
   files; they intentionally combine several resolution axes in one
   request rather than isolating a single one. "Ambient registry auth not
-  configured" is the chart's own default (`registryAuth.dockerConfigJson`
-  defaults to an empty `{"auths":{}}`), so scenarios that want that need
-  no extra config. A resolved image's exact sha suffix is real and
-  content-derived (see the other migrated files' own header comments for
-  why this suite compares a `<registry>/<name>:sha-` *prefix* via
+  configured" is the chart's own default (`registryAuth.registries`
+  defaults to an empty list, rendering `{"auths":{}}`), so scenarios that
+  want that need no extra config. A resolved image's exact sha suffix is
+  real and content-derived (see the other migrated files' own header
+  comments for why this suite compares a `<registry>/<name>:sha-`
+  *prefix* via
   `contains` rather than independently re-deriving the exact sha) - the
   one exception is the "non-default branch" scenario below, where the
   exact sha is genuinely the point; proving that without a second,

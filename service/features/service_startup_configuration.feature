@@ -463,17 +463,19 @@ Feature: Service startup configuration loading
     Then the command exited with 0
 
   @server-config @needs-ssh-fixture
-  Scenario: A --ssh-host-key-policy CLI flag overrides both the env var and the settings file
-    # Proves config.ts's full precedence chain (CLI flag > env var >
-    # settings file > default) with one real, observable outcome: env var
-    # and settings file both say "pinned" (which would fail closed before
-    # ever attempting a connection, given no pinnedHostKey is configured)
-    # here specifically to isolate the CLI flag's own precedence over
-    # *both* lower sources at once - if the CLI layer were wired wrong
-    # (ignored, or checked after the env var instead of before), this
-    # would fail closed instead of reaching the authentication step, the
-    # same "Permission denied" signature the TOFU-default scenario above
-    # proves.
+  Scenario: A --ssh-host-key-policy CLI flag overrides the settings file
+    # Proves config.ts's real precedence (CLI flag > settings file >
+    # default) with one real, observable outcome: the chart's own
+    # sshHostKeyPolicy value (which always flows into the rendered
+    # settings file - see charts/devcontainer-builder/templates/
+    # _helpers.tpl's settingsJson helper) says "pinned" (which would fail
+    # closed before ever attempting a connection, given no pinnedHostKey
+    # is configured) specifically so the CLI flag's own override is the
+    # only thing that can make this reach the authentication step at all -
+    # if the CLI layer were wired wrong (ignored, or checked after the
+    # settings file instead of before), this would fail closed instead of
+    # reaching it, the same "Permission denied" signature the TOFU-default
+    # scenario above proves.
     Given Directory "<GitServerChartDir>" at "../charts/test-git-server"
     And Helm Chart "<GitServerChart>" in "<GitServerChartDir>"
     And Helm Release known as "<GitServerRelease>":
@@ -498,10 +500,6 @@ Feature: Service startup configuration loading
       | -C     | unauthorized                                                                        |
     Then the command exited with 0
 
-    When I create File known as "<SettingsFile>" at ".cache/fixtures/service-startup-configuration-w<WorkerId>/cli-override-settings.json" with:
-      """
-      { "sshHostKeyPolicy": "pinned" }
-      """
     Given Helm Release known as "<Release>":
       | PROPERTY  | VALUE                |
       | chart     | <Chart>              |
@@ -518,8 +516,6 @@ Feature: Service startup configuration loading
       | --set              | gitCredentials.entries[0].kind=ssh                                                                                |
       | --set-file         | gitCredentials.entries[0].privateKey=.cache/fixtures/service-startup-configuration-w<WorkerId>/unauthorized-key-cli-override/id_ed25519 |
       | --set              | sshHostKeyPolicy=pinned                                                                                            |
-      | --set              | settingsFile.filename=settings.json                                                                               |
-      | --set-file         | settingsFile.content=.cache/fixtures/service-startup-configuration-w<WorkerId>/cli-override-settings.json                     |
       | --set              | extraArgs[0]=--ssh-host-key-policy                                                                                 |
       | --set              | extraArgs[1]=tofu                                                                                                  |
       | --wait             | True                                                                                                               |

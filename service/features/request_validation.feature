@@ -119,7 +119,7 @@ Feature: POST /build request shape validation
       | BODY |     | {}    |
     Then the response status is 400:
       | SOURCE | CONDITION | VALUE |
-      | BODY   | equals    | {"error":"missing or invalid fields: repository (required); branch, image.{registry,name,tag}, gitCredentials.{username,token}, registryCredentials.{registry,username,password} (all optional)"} |
+      | BODY   | equals    | {"error":"missing or invalid fields: repository (required); branch, image.{registry,name,tag}, gitCredentials.{username,token}, registryCredentials.{registry,username,password}, platforms, buildOptions.{noCache,cacheFrom,cacheTo,mode} (all optional)"} |
 
     When I remove Docker Buildx Builder known as "<Builder>"
     Then the command exited with 0
@@ -311,3 +311,60 @@ Feature: POST /build request shape validation
     Then the command exited with 0
     When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
     Then the command exited with 0
+
+  @client-request
+  Scenario: platforms and buildOptions fully specified pass shape validation
+    When I send a POST request to Endpoint known as "<AppApi>" path "/build" with:
+      | TYPE | KEY | VALUE                                                                                                                                                                                                          |
+      | BODY |     | {"repository":"file:///nonexistent-repo-for-validation-tests.git","platforms":["linux/amd64","linux/arm64"],"buildOptions":{"noCache":true,"cacheFrom":"ghcr.io/example:cache","cacheTo":"ghcr.io/example:cache","mode":"never"}} |
+    Then the response status is 500
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
+
+  @negative @client-request
+  Scenario Outline: An invalid platforms field is rejected
+    When I send a POST request to Endpoint known as "<AppApi>" path "/build" with:
+      | TYPE | KEY | VALUE                                                                                            |
+      | BODY |     | {"repository":"https://github.com/example/example-devcontainer.git","platforms":<platforms>}   |
+    Then the response status is 400
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
+
+    Examples:
+      | platforms         |
+      | "linux/amd64"     |
+      | [123]              |
+      | [""]               |
+      | [null]             |
+
+  @negative @client-request
+  Scenario Outline: An invalid buildOptions field is rejected
+    When I send a POST request to Endpoint known as "<AppApi>" path "/build" with:
+      | TYPE | KEY | VALUE                                                                                                 |
+      | BODY |     | {"repository":"https://github.com/example/example-devcontainer.git","buildOptions":<buildOptions>}  |
+    Then the response status is 400
+
+    When I remove Docker Buildx Builder known as "<Builder>"
+    Then the command exited with 0
+    When I uninstall Helm Release known as "<Release>"
+    Then the command exited with 0
+    When I uninstall Helm Release "<NamespaceRelease>" with --wait --timeout 120s
+    Then the command exited with 0
+
+    Examples:
+      | buildOptions              |
+      | {"noCache":"yes"}         |
+      | {"cacheFrom":""}          |
+      | {"cacheTo":""}            |
+      | {"mode":"sometimes"}      |
+      | "not-an-object"           |
